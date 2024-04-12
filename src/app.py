@@ -11,13 +11,14 @@ from dash.dependencies import Input, Output, State
 # Mark point when clicked
 # Create line between points
 # Change shown units to show width from opposing point, length of section
+# Fix PolyArea
 
 
 
 GS = 100
 fig = px.scatter(
     x=[0], y=[0]
-).add_traces(
+).update_traces(mode="lines+markers").add_traces(
     px.scatter(
         x=np.repeat(np.linspace(-200, 200, GS), GS), y=np.tile(np.linspace(250, 0, GS), GS)
     )
@@ -36,6 +37,7 @@ fig.add_vline(x=0, line_width=3, line_dash="dash", line_color="grey")
 app = Dash(__name__, update_title=None)
 app.layout = html.Div([
     dash.html.H1('Down Quilt Calculator'),
+    dash.html.H3('Step One: Draw the right side of the quilt'),
     dcc.Graph(id="graph", figure=fig), 
     html.Div(id="init_plot"),
     html.Div(id='empty_space'),
@@ -45,6 +47,10 @@ app.layout = html.Div([
 )
 
 points_selected = []
+
+#Fix
+def PolyArea(x,y):
+    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
 
 # ------------- Define App Interactivity ---------------------------------------------------
 @app.callback(
@@ -60,12 +66,14 @@ def click(clickData):
     print(x)
     y = [i["y"] for i in points_selected]
     print(y)
-    
     length = np.max(y) - np.min(y)
     print("Length: ", length)
     width = np.max(x) - np.min(x)
     print("Width: ", width)
-    fig.data[0].update(x=x, y=y) 
+    x_ref = x + [-i["x"] for i in points_selected]
+    y_ref = y + [i["y"] for i in points_selected]
+    print(PolyArea(x_ref,y_ref))
+    fig.data[0].update(x=x_ref, y=y_ref) 
     return
 
 
