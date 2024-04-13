@@ -8,13 +8,11 @@ from dash.dependencies import Input, Output, State
 
 ##TODO:
 # change to update when clicked
-# Mark point when clicked
 # Create line between points
 # Change shown units to show width from opposing point, length of section
 # Fix PolyArea
 
-
-
+# ------------- Define Graphs ---------------------------------------------------
 GS = 100
 fig = px.scatter(
     x=[0], y=[0]
@@ -38,33 +36,68 @@ fig.add_vline(x=0, line_width=3, line_dash="dash", line_color="grey")
 app = Dash(__name__, update_title=None)
 app.layout = html.Div([
     dash.html.H1('Down Quilt Calculator'),
-    dash.html.H3('Step One: Draw the right side of the quilt'),
+    html.Div([
+        "Measurement System: ",
+    dcc.RadioItems(id='measurement',options=['Metric', 'Imperial'], value='Metric', inline=True)
+    ]),
+    dash.html.H3('Step One: Define maximum unfilled dimensions'),
+    html.Div([
+        "Height: ",
+        dcc.Input(id='height', value='200', type='number'),
+        "Width: ",
+        dcc.Input(id='width', value='140', type='number')
+    ]),
+    dash.html.H3('Step Two: Draw the right side of the quilt'),
     dcc.Graph(id="graph", figure=fig), 
     html.Div(id="init_plot"),
     html.H2('Baffle Construction',id='h2_text'),
-    html.Div([
-        "Percentage of length with vertical baffles: ",
-        dcc.Input(id='vertProp', value='50', type='number')
-    ]),
+    # html.Div([
+    #     "Percentage of length with vertical baffles: ",
+    #     dcc.Input(id='vertProp', value='50', type='number')
+    # ]),
     html.Div([
         "Baffle Width: ",
-        dcc.Input(id='bWidthIn', value='14', type='number')
+        dcc.Input(id='bWidth', value='14', type='number')
     ]),
     html.Br(),
-    html.Div(id='bWidthOut'),
     html.Div([
         "Baffle Height: ",
-        dcc.Input(id='bHeightIn', value='2.5', type='number')
+        dcc.Input(id='bHeight', value='2.5', type='number')
     ]),
     html.Br(),
-    html.Div(id='bHeightIn'),
     html.Div([
         "Differential Cut: ",
     dcc.RadioItems(['None','Vertical','Horizontal','Both'], 'None')
-    ])
-    # dcc.Slider(id='slider'),
+    ]),
+    dash.html.H3('Materials'),
+    html.Div([
+        "Inner Shell Weight: ",
+        dcc.Input(id='innerWeight', value='35', type='number'),
+        "Outer Shell Weight: ",
+        dcc.Input(id='outerWeight', value='35', type='number')
+    ]),
+    html.Div([
+        "Baffle Material Weight: ",
+        dcc.Input(id='outerWeight', value='25', type='number'),
+        "Down Fill Rating: ",
+        dcc.Input(id='FP', value='850', min='700', max='1000', step='50', type='number'),
+        "Underfill/Overfill %: ",
+        dcc.Input(id='overfillPerc', value='0', step='5', type='number'),
+    ]),
+    html.Br(),
+    html.Div([
+        # html.Div(id='innerShellDims'),
+        # html.Div(id='innerShellBaffleWidth'),
+        # html.Div(id='outerShellDims'),
+        # html.Div(id='outerShellBaffleWidth'),
+        html.Div(id='totalChamberVol'),
+        html.Div(id='totalDown'),
+        html.Div(id='finalWeight'),
+    ],id="output")
      ]
 )
+
+
 
 points_selected = []
 
@@ -95,23 +128,23 @@ def click(clickData):
     fig.data[0].update(x=x_ref, y=y_ref) 
     return
 
-@callback(
-    Output(component_id='bWidthOut', component_property='children'),
-    Input(component_id='vertProp', component_property='value')
-)
-def update_output_bw(input_value):
-    return f'Percentage vertical: {input_value}'
+# @callback(
+#     Output(component_id='bWidthOut', component_property='children'),
+#     Input(component_id='vertProp', component_property='value')
+# )
+# def update_output_bw(input_value):
+#     return f'Percentage vertical: {input_value}'
 
 @callback(
     Output(component_id='bWidthOut', component_property='children'),
-    Input(component_id='bWidthIn', component_property='value')
+    Input(component_id='bWidth', component_property='value')
 )
 def update_output_bw(input_value):
     return f'Baffle Width: {input_value}'
 
 @callback(
     Output(component_id='bHeightOut', component_property='children'),
-    Input(component_id='bHeightIn', component_property='value')
+    Input(component_id='bHeight', component_property='value')
 )
 def update_output_bh(input_value):
     return f'Baffle Height: {input_value}'
