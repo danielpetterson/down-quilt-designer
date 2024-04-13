@@ -18,13 +18,14 @@ from dash.dependencies import Input, Output, State
 GS = 100
 fig = px.scatter(
     x=[0], y=[0]
-).update_traces(mode="lines+markers").add_traces(
-    px.scatter(
-        x=np.repeat(np.linspace(-200, 200, GS), GS), y=np.tile(np.linspace(250, 0, GS), GS)
+# ).update_traces(mode="lines+markers"
+                ).add_traces(
+        px.scatter(
+            x=np.repeat(np.linspace(-200, 200, GS), GS), y=np.tile(np.linspace(250, 0, GS), GS)
+        )
+        .update_traces(marker_color="rgba(0,0,0,0)")
+        .data
     )
-    .update_traces(marker_color="rgba(0,0,0,0)")
-    .data
-)
 
 fig.layout.height=500
 fig.layout.width=750
@@ -40,8 +41,27 @@ app.layout = html.Div([
     dash.html.H3('Step One: Draw the right side of the quilt'),
     dcc.Graph(id="graph", figure=fig), 
     html.Div(id="init_plot"),
-    html.Div(id='empty_space'),
-    html.H2('test',id='h2_text'),
+    html.H2('Baffle Construction',id='h2_text'),
+    html.Div([
+        "Percentage of length with vertical baffles: ",
+        dcc.Input(id='vertProp', value='50', type='number')
+    ]),
+    html.Div([
+        "Baffle Width: ",
+        dcc.Input(id='bWidthIn', value='14', type='number')
+    ]),
+    html.Br(),
+    html.Div(id='bWidthOut'),
+    html.Div([
+        "Baffle Height: ",
+        dcc.Input(id='bHeightIn', value='2.5', type='number')
+    ]),
+    html.Br(),
+    html.Div(id='bHeightIn'),
+    html.Div([
+        "Differential Cut: ",
+    dcc.RadioItems(['None','Vertical','Horizontal','Both'], 'None')
+    ])
     # dcc.Slider(id='slider'),
      ]
 )
@@ -57,7 +77,6 @@ def PolyArea(x,y):
     Output(component_id='init_plot', component_property='children'),
     Input(component_id='graph', component_property='clickData'),
 )
-
 def click(clickData):
     if not clickData:
         raise exceptions.PreventUpdate
@@ -76,6 +95,26 @@ def click(clickData):
     fig.data[0].update(x=x_ref, y=y_ref) 
     return
 
+@callback(
+    Output(component_id='bWidthOut', component_property='children'),
+    Input(component_id='vertProp', component_property='value')
+)
+def update_output_bw(input_value):
+    return f'Percentage vertical: {input_value}'
+
+@callback(
+    Output(component_id='bWidthOut', component_property='children'),
+    Input(component_id='bWidthIn', component_property='value')
+)
+def update_output_bw(input_value):
+    return f'Baffle Width: {input_value}'
+
+@callback(
+    Output(component_id='bHeightOut', component_property='children'),
+    Input(component_id='bHeightIn', component_property='value')
+)
+def update_output_bh(input_value):
+    return f'Baffle Height: {input_value}'
 
 
 if __name__ == "__main__":
