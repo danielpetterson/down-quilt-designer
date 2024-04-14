@@ -32,6 +32,9 @@ fig.add_vline(x=0, line_width=3, line_dash="dash", line_color="grey")
 # # fig.update_layout(clickmode="event+select")
 # # fig.update_layout(dragmode="drawline")
 
+df = px.data.tips()
+fig2 = px.scatter(df, x="total_bill", y="tip", color="smoker", facet_col="sex")
+
 # Build App
 app = Dash(__name__, update_title=None)
 app.layout = html.Div([
@@ -85,6 +88,7 @@ app.layout = html.Div([
         dcc.Input(id='overfillPerc', value='0', step='5', type='number'),
     ]),
     html.Br(),
+    dcc.Graph(id="graph", figure=fig2),
     html.Div([
         # html.Div(id='innerShellDims'),
         # html.Div(id='innerShellBaffleWidth'),
