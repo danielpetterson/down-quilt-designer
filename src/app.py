@@ -1,16 +1,24 @@
 import numpy as np
-import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import math, json
 from dash import *
 from dash.dependencies import Input, Output, State
+from functools import reduce
+import operator
+import math
+from shapely.geometry import Polygon
 
 ##TODO:
 # change to update when clicked
 # Create line between points
 # Change shown units to show width from opposing point, length of section
-# Fix PolyArea
+# Create df for inner/outer coords (x,y,layer)
+# Configure lower plots to facet based on layer
+# Volume equations based on non-differential (baffle height*area)
+# Calculate amount of fill needed based on input (overstuff, FP)
+
+## Later
+# volume for differential. Calculate per baffle?
 
 # ------------- Define Graphs ---------------------------------------------------
 GS = 201
@@ -105,20 +113,15 @@ app.layout = html.Div([
 
 points_selected = []
 
-#Fix
-def PolyArea1(x_coords,y_coords):
-    n = len(x_coords)
-    area = 0
-    for i in range(n):
-        x1, y1 = x_coords[i], y_coords[i]
-        x2, y2 = x_coords[(i + 1) % n], y_coords[(i + 1) % n]
-        area += (x1 * y2 - x2 * y1) #first edge of the triangle
-    area = abs(area) / 2 # area of polygon
-    print("Area of Polygon:", area)
-    return
-
-def PolyArea2(x,y):
-    return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+def PolyArea(x,y):
+    coords = list(zip(x, y))
+    if len(x) >= 4:
+        center = tuple(map(operator.truediv, reduce(lambda x, y: map(operator.add, x, y), coords), [len(coords)] * 2)) # find center
+        sorted_coords = sorted(coords, key=lambda coord: (-135 - math.degrees(math.atan2(*tuple(map(operator.sub, coord, center))[::-1]))) % 360) # arrange clockwise
+        print(sorted_coords)
+        shape = Polygon(sorted_coords)
+        print("Area of Polygon:", shape.area)
+    return 
 
 # ------------- Define App Interactivity ---------------------------------------------------
 @app.callback(
@@ -139,10 +142,7 @@ def click(clickData):
     print("Width: ", width)
     x_ref = x + [-i["x"] for i in points_selected]
     y_ref = y + [i["y"] for i in points_selected]
-    print(x_ref)
-    print(y_ref)
-    print(PolyArea1(x_ref,y_ref))
-    print(PolyArea2(x_ref,y_ref))
+    print(PolyArea(x_ref,y_ref))
     fig.data[0].update(x=x_ref, y=y_ref) 
     return
 
