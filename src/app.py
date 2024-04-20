@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from dash import *
 from dash.dependencies import Input, Output, State
+import dash_bootstrap_components as dbc
 from functools import reduce
 import operator
 import math
@@ -41,31 +42,40 @@ fig.update_layout(clickmode="event")
 # # fig.update_layout(clickmode="event+select")
 # # fig.update_layout(dragmode="drawline")
 
-data = {'Length':[''],
-        'Width':[''],
-        'Inner Area':[''],
+dataIn = {
         'Seam Allowance': [1],
         'Baffle Height':[2.5],
         'Max Chamber Height':[2.5],
-        'Number of Baffle Chambers': [8],
+        'Number of Chambers': [8],
         'Down Fill Rating': [800],
         '% Down Overstuff': [10],
+        '% Length with Vertical Baffles': [100],
         'Inner Fabric Weight': [50],
         'Outer Fabric Weight': [50],
-        'Baffle Material Weight': [25]
+        'Baffle Material Weight': [25],
+
         }
+
+dataOut = {'Length':[0],
+           'Width':[0],
+           'Area':[0],
+           'Baffle Width':[0],
+           'Total Volume': [0],
+           'Grams of Down Required': [0],
+           'Final Weight': [0]
+            }
  
 # Convert the dictionary into DataFrame 
-df = pd.DataFrame(data)
+specsIn = pd.DataFrame(dataIn)
+specsOut = pd.DataFrame(dataOut)
  
-# # select two columns
-# print(df[['Name', 'Qualification']])
 
-# Generic dataframe
-df = px.data.tips()
+
 # Baffle Figure
 figBaffle = go.Figure(go.Scatter(x=[0], y=[0], fill="toself"))
 
+# Generic dataframe
+df = px.data.tips()
 # Inner/Outer Fabric Figure
 figInnerOuter = px.scatter(df, x="total_bill", y="tip", color="smoker", facet_col="sex")
 
@@ -87,52 +97,23 @@ app.layout = html.Div([
     dash.html.H3('Step Two: Draw the right side of the quilt'),
     dcc.Graph(id="graph", figure=fig), 
     html.Div(id="init_plot"),
-    html.H2('Baffle Construction',id='h2_text'),
-    html.Div([
-        "Percentage of length with vertical baffles: ",
-        dcc.Input(id='vertProp', value='100', type='number')
+    # html.H2('Baffle Construction',id='h2_text'),
+    dbc.Container([
+        dbc.Label('Click a cell in the table:'),
+        dash_table.DataTable(specsIn.to_dict('records'),[{"name": i, "id": i} for i in specsIn.columns], id='tblIn', editable=True),
+        # dbc.Alert(id='testAlert'),
     ]),
-    html.Div([
-        "Baffle Width: ",
-        dcc.Input(id='bWidth', value='14', type='number')
-    ]),
-    html.Br(),
-    html.Div([
-        "Baffle Height: ",
-        dcc.Input(id='bHeight', value='2.5', type='number')
+    dbc.Container([
+        dash_table.DataTable(specsOut.to_dict('records'),[{"name": i, "id": i} for i in specsOut.columns], id='tblOut', editable=False),
     ]),
     html.Br(),
-    html.Div([
-        "Differential Cut: ",
-    dcc.RadioItems(['None','Vertical','Horizontal','Both'], 'None', id='diffCut')
-    ]),
-    dash.html.H3('Materials'),
-    html.Div([
-        "Inner Shell Weight: ",
-        dcc.Input(id='innerWeight', value='35', type='number'),
-        "Outer Shell Weight: ",
-        dcc.Input(id='outerWeight', value='35', type='number')
-    ]),
-    html.Div([
-        "Baffle Material Weight: ",
-        dcc.Input(id='baffleMaterialWeight', value='25', type='number'),
-        "Down Fill Rating: ",
-        dcc.Input(id='FP', value='850', min='600', max='1000', step='50', type='number'),
-        "Underfill/Overfill %: ",
-        dcc.Input(id='overfillPerc', value='0', step='5', type='number'),
-    ]),
+    # html.Div([
+    #     "Differential Cut: ",
+    # dcc.RadioItems(['None','Vertical','Horizontal','Both'], 'None', id='diffCut')
+    # ]),
     dcc.Graph(id="graphBaffle", figure=figBaffle),
     html.Br(),
     dcc.Graph(id="graphFaceted", figure=figInnerOuter),
-    html.Div([
-        # html.Div(id='innerShellDims'),
-        # html.Div(id='innerShellBaffleWidth'),
-        # html.Div(id='outerShellDims'),
-        # html.Div(id='outerShellBaffleWidth'),
-        html.Div(id='totalChamberVol'),
-        html.Div(id='totalDown'),
-        html.Div(id='finalWeight'),
-    ],id="output")
      ]
 )
 
@@ -140,6 +121,7 @@ app.layout = html.Div([
 
 points_selected = []
 
+# Calculate Area of Inner
 def PolyArea(x,y):
     coords = list(zip(x, y))
     if len(x) >= 4:
@@ -175,6 +157,8 @@ def click(clickData, maxHeight, maxWidth):
     fig.data[0].update(x=x_ref, y=y_ref) 
     return
 
+
+
 # @callback(
 #     Output(component_id='bWidthOut', component_property='children'),
 #     Input(component_id='vertProp', component_property='value')
@@ -182,19 +166,31 @@ def click(clickData, maxHeight, maxWidth):
 # def update_output_bw(input_value):
 #     return f'Percentage vertical: {input_value}'
 
-# @callback(
-#     Output(component_id='bWidthOut', component_property='children'),
-#     Input(component_id='bWidth', component_property='value')
-# )
-# def update_output_bw(input_value):
-#     return f'Baffle Width: {input_value}'
+# TODO: Share data from callback
+@app.callback(
+    Output(component_id='tablOut', component_property='data'),
+    Input(component_id='graph', component_property='clickData'),
+)
+def updateDataOut(clickData):
 
-# @callback(
-#     Output(component_id='bHeightOut', component_property='children'),
-#     Input(component_id='bHeight', component_property='value')
-# )
-# def update_output_bh(input_value):
-#     return f'Baffle Height: {input_value}'
+    return
+
+@app.callback(
+    Output(component_id='graphBaffle', component_property='figure'),
+    Input(component_id='tblIn', component_property='data'),
+    Input(component_id='tblOut', component_property='data'),
+)
+def click(dataIn, dataOut):
+    print(dataIn[0]['Seam Allowance'])
+    Hb = dataIn[0]['Baffle Height']
+    Hc = dataIn[0]['Max Chamber Height']
+    IWB = dataOut[0]['Width']/dataIn[0]['Number of Chambers']
+    OWB = (np.sqrt(((IWB/2)**2+(Hc-Hb)**2)*2)/2)*np.pi
+    print(OWB)
+    # (SQRT(((H10/2)^2+(C12-C11)^2)*2)/2)*PI()
+    # fig.data[0].update(x=x_ref, y=y_ref) 
+    return
+
 
 @app.callback(
     Output(component_id='graphFaceted', component_property='figure'),
