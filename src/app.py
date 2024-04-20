@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dash import *
@@ -6,7 +7,7 @@ from dash.dependencies import Input, Output, State
 from functools import reduce
 import operator
 import math
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon # type: ignore
 
 ##TODO:
 # change to update when clicked
@@ -40,8 +41,33 @@ fig.update_layout(clickmode="event")
 # # fig.update_layout(clickmode="event+select")
 # # fig.update_layout(dragmode="drawline")
 
-# df = px.data.tips()
-# fig2 = px.scatter(df, x="total_bill", y="tip", color="smoker", facet_col="sex")
+data = {'Length':[''],
+        'Width':[''],
+        'Inner Area':[''],
+        'Seam Allowance': [1],
+        'Baffle Height':[2.5],
+        'Max Chamber Height':[2.5],
+        'Number of Baffle Chambers': [8],
+        'Down Fill Rating': [800],
+        '% Down Overstuff': [10],
+        'Inner Fabric Weight': [50],
+        'Outer Fabric Weight': [50],
+        'Baffle Material Weight': [25]
+        }
+ 
+# Convert the dictionary into DataFrame 
+df = pd.DataFrame(data)
+ 
+# # select two columns
+# print(df[['Name', 'Qualification']])
+
+# Generic dataframe
+df = px.data.tips()
+# Baffle Figure
+figBaffle = go.Figure(go.Scatter(x=[0], y=[0], fill="toself"))
+
+# Inner/Outer Fabric Figure
+figInnerOuter = px.scatter(df, x="total_bill", y="tip", color="smoker", facet_col="sex")
 
 # Build App
 app = Dash(__name__, update_title=None)
@@ -62,10 +88,10 @@ app.layout = html.Div([
     dcc.Graph(id="graph", figure=fig), 
     html.Div(id="init_plot"),
     html.H2('Baffle Construction',id='h2_text'),
-    # html.Div([
-    #     "Percentage of length with vertical baffles: ",
-    #     dcc.Input(id='vertProp', value='50', type='number')
-    # ]),
+    html.Div([
+        "Percentage of length with vertical baffles: ",
+        dcc.Input(id='vertProp', value='100', type='number')
+    ]),
     html.Div([
         "Baffle Width: ",
         dcc.Input(id='bWidth', value='14', type='number')
@@ -78,7 +104,7 @@ app.layout = html.Div([
     html.Br(),
     html.Div([
         "Differential Cut: ",
-    dcc.RadioItems(['None','Vertical','Horizontal','Both'], 'None')
+    dcc.RadioItems(['None','Vertical','Horizontal','Both'], 'None', id='diffCut')
     ]),
     dash.html.H3('Materials'),
     html.Div([
@@ -91,12 +117,13 @@ app.layout = html.Div([
         "Baffle Material Weight: ",
         dcc.Input(id='baffleMaterialWeight', value='25', type='number'),
         "Down Fill Rating: ",
-        dcc.Input(id='FP', value='850', min='700', max='1000', step='50', type='number'),
+        dcc.Input(id='FP', value='850', min='600', max='1000', step='50', type='number'),
         "Underfill/Overfill %: ",
         dcc.Input(id='overfillPerc', value='0', step='5', type='number'),
     ]),
+    dcc.Graph(id="graphBaffle", figure=figBaffle),
     html.Br(),
-    # dcc.Graph(id="graph", figure=fig2),
+    dcc.Graph(id="graphFaceted", figure=figInnerOuter),
     html.Div([
         # html.Div(id='innerShellDims'),
         # html.Div(id='innerShellBaffleWidth'),
@@ -127,8 +154,10 @@ def PolyArea(x,y):
 @app.callback(
     Output(component_id='init_plot', component_property='children'),
     Input(component_id='graph', component_property='clickData'),
+    Input(component_id='height', component_property='value'),
+    Input(component_id='width', component_property='value'),
 )
-def click(clickData):
+def click(clickData, maxHeight, maxWidth):
     if not clickData:
         raise exceptions.PreventUpdate
     points_selected.append({k: clickData["points"][0][k] for k in ["x", "y"]})
@@ -167,6 +196,15 @@ def click(clickData):
 # def update_output_bh(input_value):
 #     return f'Baffle Height: {input_value}'
 
+@app.callback(
+    Output(component_id='graphFaceted', component_property='figure'),
+    Input(component_id='graph', component_property='clickData'),
+    Input(component_id='diffCut', component_property='value'),
+)
+def placeholder(clickData, diffCut):
+    if diffCut == None:
+        pass
+    return
 
 if __name__ == "__main__":
     app.run_server(debug=True, dev_tools_props_check=True)
