@@ -42,27 +42,29 @@ fig.update_layout(clickmode="event")
 # # fig.update_layout(clickmode="event+select")
 # # fig.update_layout(dragmode="drawline")
 
-dataIn = {
-        'Seam Allowance': [1],
-        'Baffle Height':[2.5],
-        'Max Chamber Height':[2.5],
-        'Number of Chambers': [8],
-        'Down Fill Rating': [800],
-        '% Down Overstuff': [10],
-        '% Length with Vertical Baffles': [100],
-        'Inner Fabric Weight': [50],
-        'Outer Fabric Weight': [50],
-        'Baffle Material Weight': [25],
+points_selected = []
 
+dataIn = {
+    'Seam Allowance': [1],
+    'Baffle Height':[2.5],
+    'Max Chamber Height':[2.5],
+    'Number of Chambers': [8],
+    'Down Fill Rating': [800],
+    '% Down Overstuff': [10],
+    '% Length with Vertical Baffles': [100],
+    'Inner Fabric Weight': [50],
+    'Outer Fabric Weight': [50],
+    'Baffle Material Weight': [25],
         }
 
-dataOut = {'Length':[0],
-           'Width':[0],
-           'Area':[0],
-           'Baffle Width':[0],
-           'Total Volume': [0],
-           'Grams of Down Required': [0],
-           'Final Weight': [0]
+dataOut = {
+    'Length': [0],
+    'Width': [0],
+    'Area': [0],
+    'Baffle Width':[0],
+    'Total Volume': [0],
+    'Grams of Down Required': [0],
+    'Final Weight': [0]
             }
  
 # Convert the dictionary into DataFrame 
@@ -119,7 +121,7 @@ app.layout = html.Div([
 
 
 
-points_selected = []
+
 
 # Calculate Area of Inner
 def PolyArea(x,y):
@@ -127,10 +129,10 @@ def PolyArea(x,y):
     if len(x) >= 4:
         center = tuple(map(operator.truediv, reduce(lambda x, y: map(operator.add, x, y), coords), [len(coords)] * 2)) # find center
         sorted_coords = sorted(coords, key=lambda coord: (-135 - math.degrees(math.atan2(*tuple(map(operator.sub, coord, center))[::-1]))) % 360) # arrange clockwise
-        print(sorted_coords)
+        # print(sorted_coords)
         shape = Polygon(sorted_coords)
-        print("Area of Polygon:", shape.area)
-    return 
+        # print("Area of Polygon:", shape.area)
+    return shape.area
 
 # ------------- Define App Interactivity ---------------------------------------------------
 @app.callback(
@@ -144,49 +146,59 @@ def click(clickData, maxHeight, maxWidth):
         raise exceptions.PreventUpdate
     points_selected.append({k: clickData["points"][0][k] for k in ["x", "y"]})
     x = [i["x"] for i in points_selected]
-    print(x)
+    # print(x)
     y = [i["y"] for i in points_selected]
-    print(y)
+    # print(y)
     length = np.max(y) - np.min(y)
-    print("Length: ", length)
+    # print("Length: ", length)
     width = np.max(x)*2
-    print("Width: ", width)
+    # print("Width: ", width)
     x_ref = x + [-i["x"] for i in points_selected]
     y_ref = y + [i["y"] for i in points_selected]
-    print(PolyArea(x_ref,y_ref))
+    # print(PolyArea(x_ref,y_ref))
     fig.data[0].update(x=x_ref, y=y_ref) 
     return
 
-
-
-# @callback(
-#     Output(component_id='bWidthOut', component_property='children'),
-#     Input(component_id='vertProp', component_property='value')
-# )
-# def update_output_bw(input_value):
-#     return f'Percentage vertical: {input_value}'
-
-# TODO: Share data from callback
+# TODO: Share data from callback/examine use of state for multiple users.
 @app.callback(
-    Output(component_id='tablOut', component_property='data'),
-    Input(component_id='graph', component_property='clickData'),
+    Output(component_id='tblOut', component_property='data'),
+    # Input(component_id='graph', component_property='clickData'),
+    Input(component_id='tblIn', component_property='data'),
+    # Include button press to initiate calcs?
 )
-def updateDataOut(clickData):
+def updateDataOut(dataIn):
+    print(dataIn[0]['Baffle Height'])
+    if len(points_selected) > 1:
+        x = [i["x"] for i in points_selected]
+        y = [i["y"] for i in points_selected]
+        x_ref = x + [-i["x"] for i in points_selected]
+        y_ref = y + [i["y"] for i in points_selected]
 
+        length = np.max(y) - np.min(y)
+        width = np.max(x)*2
+        area = PolyArea(x_ref,y_ref)
+        baffleWidth = width/dataIn[0]['Number of Chambers']
+        totalVolume = float(area) * float(dataIn[0]['Baffle Height']) # Only for non-diff cut
+        gramsDown = (totalVolume/dataIn[0]['Down Fill Rating']) 
+        gramsDownAdj = gramsDown * (1 + (dataIn[0]['% Down Overstuff']/100))
+        print(baffleWidth)
+        print(totalVolume)
+        print(gramsDown)
+        print(gramsDownAdj)
     return
 
+# Graph Showing Dimensions of Single Full-Width Chamber
 @app.callback(
     Output(component_id='graphBaffle', component_property='figure'),
     Input(component_id='tblIn', component_property='data'),
     Input(component_id='tblOut', component_property='data'),
 )
-def click(dataIn, dataOut):
-    print(dataIn[0]['Seam Allowance'])
+def plotBaffleDiagram(dataIn, dataOut):
     Hb = dataIn[0]['Baffle Height']
     Hc = dataIn[0]['Max Chamber Height']
-    IWB = dataOut[0]['Width']/dataIn[0]['Number of Chambers']
-    OWB = (np.sqrt(((IWB/2)**2+(Hc-Hb)**2)*2)/2)*np.pi
-    print(OWB)
+    # IWB = dataOut[0]['Width']/dataIn[0]['Number of Chambers']
+    # OWB = (np.sqrt(((IWB/2)**2+(Hc-Hb)**2)*2)/2)*np.pi
+    # print(OWB)
     # (SQRT(((H10/2)^2+(C12-C11)^2)*2)/2)*PI()
     # fig.data[0].update(x=x_ref, y=y_ref) 
     return
@@ -195,11 +207,10 @@ def click(dataIn, dataOut):
 @app.callback(
     Output(component_id='graphFaceted', component_property='figure'),
     Input(component_id='graph', component_property='clickData'),
-    Input(component_id='diffCut', component_property='value'),
+    
 )
-def placeholder(clickData, diffCut):
-    if diffCut == None:
-        pass
+def placeholder(clickData):
+
     return
 
 if __name__ == "__main__":
