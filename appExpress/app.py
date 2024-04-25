@@ -1,22 +1,22 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
-
+from shapely.geometry import Polygon # type: ignore
 import plotly.express as px
-from shiny import reactive
-from shiny.express import input, render, ui, expressify
-from shinywidgets import render_plotly
+import plotly.graph_objects as go
 from functools import reduce
 import operator
 import math
-from shapely.geometry import Polygon # type: ignore
+
+from shiny import reactive
+from shiny.express import input, render, ui, expressify
+from shinywidgets import render_plotly
+
 import json
-import plotly.graph_objects as go
 
 
 
-ui.page_opts(title="Quilt Designer", fillable=True)
+# ui.page_opts(title="Quilt Designer", fillable=True)
 
 @expressify
 def left_side(**kwargs):
@@ -40,9 +40,6 @@ def left_side(**kwargs):
 with ui.sidebar():
     left_side(multiple=False, id="acc_single")
 
-    @render.code
-    def acc_single_val():
-        return "input.acc_single(): " + str(input.acc_single())
 
 
 
@@ -84,8 +81,18 @@ def data():
     x_ref = x + [-i for i in x]
     y_ref = y + [i for i in y]
 
+    # Max dims
     length = np.max(y) - np.min(y)
     width = np.max(x)*2
+
+    # Full baffle dims
+    Hb = input.baffleHeight()
+    Hc = input.chamberHeight()
+    IWB = input.chamberWidth()
+    OWB = (np.sqrt(((IWB/2)**2+(Hc-Hb)**2)*2)/2)*np.pi
+    chamberCSA = (np.pi*IWB*(Hc-Hb)*2/4)/2+(Hb*IWB)  #Baffle chamber cross-sectional area
+    chamberVol = chamberCSA * length
+
     area = PolyArea(x_ref,y_ref)
     totalVolume = area * specs['Baffle Height'] # Only for non-diff cut
     FPmet = (specs['Fill Power'] * 16.387064) / 28.34952 #CUIN/oz to CUCM/g
@@ -96,6 +103,8 @@ def data():
     outData = pd.DataFrame({'Length': [length],
                   'Width': [width],
                   'Area': [area],
+                  'Chamber Cross-sectional Area': [chamberCSA],
+                  'Volume Full Chamber': [chamberVol],
                   'Total Volume': [totalVolume],
                   'Grams of Down Required': [gramsDownAdj]
         }
@@ -112,71 +121,72 @@ def table():
 ### Output Values---------------------------------------------------
 @render.text  
 def text():
-    return 'placeholder'
+    return 'placeholder text'
 
-### Baffle Plot---------------------------------------------------
-@render_plotly
-def baffle_plot():
-    Hb = data()['Baffle Height'][0]
-    Hc = data()['Max Chamber Height'][0]
-    IWB = data()['Chamber Width'][0]
-    # OWB = (np.sqrt(((IWB/2)**2+(Hc-Hb)**2)*2)/2)*np.pi
-    # Create the base ellipse.
-    ellipse = Ellipse((IWB/2,0), width=IWB, height=(Hc-Hb)*2,
-                    edgecolor='white', facecolor='none', linewidth=2)
+ui.help_text("you need help")
 
-    # Get the path
-    path = ellipse.get_path()
-    # print(path)
-    # Get the list of path vertices
-    vertices = path.vertices.copy()
-    # Transform the vertices so that they have the correct coordinates
-    vertices = ellipse.get_patch_transform().transform(vertices)
-    upper_vert = vertices[int(len(vertices)*1/4):int(len(vertices)*3/4)]
-    x_ell = [item[0] for item in upper_vert]
-    y_ell = [item[1] for item in upper_vert] + Hb
+# ### Baffle Plot---------------------------------------------------
+# @render_plotly
+# def baffle_plot():
+#     Hb = data()['Baffle Height'][0]
+#     Hc = data()['Max Chamber Height'][0]
+#     IWB = data()['Chamber Width'][0]
+#     # OWB = (np.sqrt(((IWB/2)**2+(Hc-Hb)**2)*2)/2)*np.pi
+#     # Create the base ellipse.
+#     ellipse = Ellipse((IWB/2,0), width=IWB, height=(Hc-Hb)*2,
+#                     edgecolor='white', facecolor='none', linewidth=2)
 
-    # Concat verts for plotting
-    x_base = [0,0,IWB,IWB]
-    x = [*x_base, *x_ell]
-    y_base = [Hb,0,0,Hb]
-    y = [*y_base, *y_ell]
+#     # Get the path
+#     path = ellipse.get_path()
+#     # Get the list of path vertices
+#     vertices = path.vertices.copy()
+#     # Transform the vertices so that they have the correct coordinates
+#     vertices = ellipse.get_patch_transform().transform(vertices)
+#     upper_vert = vertices[int(len(vertices)*1/4):int(len(vertices)*3/4)]
 
-    figBaffle = go.Figure(go.Scatter(x= x,
-                                     y=y, 
-                                     mode = 'lines')
-                                     ).update_traces(showlegend=False)
+#     # Combine verts for plotting
+#     x_ell = [item[0] for item in upper_vert]
+#     y_ell = [item[1] for item in upper_vert] + Hb
+#     x_base = [0,0,IWB,IWB]
+#     x = [*x_base, *x_ell]
+#     y_base = [Hb,0,0,Hb]
+#     y = [*y_base, *y_ell]
+
+#     figBaffle = go.Figure(go.Scatter(x= x,
+#                                      y=y, 
+#                                      mode = 'lines')
+#                                      ).update_traces(showlegend=False)
     
-    figBaffle.add_trace(go.Scatter(
-        x=[-1, -1],
-        y=[0, Hb],
-        mode="lines+text",
-        name="Baffle Height",
-        textposition="bottom center"
-    ))
+#     figBaffle.add_trace(go.Scatter(
+#         x=[-1, -1],
+#         y=[0, Hb],
+#         mode="lines+text",
+#         name="Baffle Height",
+#         textposition="bottom center"
+#     ))
 
-    figBaffle.add_trace(go.Scatter(
-        x=[IWB/2, IWB/2],
-        y=[0, Hc],
-        mode="lines+text",
-        name="Chamber Height",
-        textposition="top center"
-    ))
+#     figBaffle.add_trace(go.Scatter(
+#         x=[IWB/2, IWB/2],
+#         y=[0, Hc],
+#         mode="lines+text",
+#         name="Chamber Height",
+#         textposition="top center"
+#     ))
 
-    figBaffle.add_trace(go.Scatter(
-        x=[0, IWB],
-        y=[-0.25, -0.25],
-        mode="lines+text",
-        name="Inner Fabric Width",
-        textposition="bottom center"
-    ))
+#     figBaffle.add_trace(go.Scatter(
+#         x=[0, IWB],
+#         y=[-0.25, -0.25],
+#         mode="lines+text",
+#         name="Inner Fabric Width",
+#         textposition="bottom center"
+#     ))
 
-    figBaffle.update_layout(template="plotly_white", height=200)
-    figBaffle.update_yaxes(range=[-0.5, np.max([int(np.ceil(IWB/4)),int(np.ceil(Hc))])]) 
+#     figBaffle.update_layout(template="plotly_white", height=200)
+#     figBaffle.update_yaxes(range=[-0.5, np.max([int(np.ceil(IWB/4)),int(np.ceil(Hc))])]) 
 
-    return figBaffle
+#     return figBaffle
 
-### Design Plot---------------------------------------------------
+# ## Design Plot---------------------------------------------------
 # @render_plotly
 # def design_plot():
 #     # init_height = input.maxHeight()
