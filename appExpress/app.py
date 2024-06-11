@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import Ellipse
 from shapely.geometry import Polygon # type: ignore
-import plotly.express as px
 import plotly.graph_objects as go
+import ipywidgets as widgets
 from functools import reduce
 import operator
 import math
@@ -16,7 +16,7 @@ import json
 
 
 
-# ui.page_opts(title="Quilt Designer", fillable=True)
+ui.page_opts(title="Quilt Designer", fillable=True)
 
 @expressify
 def left_side(**kwargs):
@@ -52,20 +52,20 @@ def data():
     y = [0,100,0,100]
 
     data = {
-    'Baffle Height':[input.baffleHeight()],
-    'Max Chamber Height':[input.chamberHeight()],
-    'Chamber Width': [input.chamberWidth()],
-    'Fill Power': [input.FP()],
-    '% Down Overstuff': [input.overstuff()],
-    '% Length with Vertical Baffles': [input.percVertBaffle()],
-    'Inner Fabric Weight': [input.innerWeight()],
-    'Outer Fabric Weight': [input.outerWeight()],
-    'Baffle Material Weight': [input.baffleWeight()],
-    'Seam Allowance': [input.seamAllowance()],
+    'Baffle Height': input.baffleHeight(),
+    'Max Chamber Height': input.chamberHeight(),
+    'Chamber Width': input.chamberWidth() ,
+    'Fill Power': input.FP() ,
+    '% Down Overstuff': input.overstuff(),
+    '% Length with Vertical Baffles': input.percVertBaffle(),
+    'Inner Fabric Weight': input.innerWeight(),
+    'Outer Fabric Weight': input.outerWeight(),
+    'Baffle Material Weight': input.baffleWeight(),
+    'Seam Allowance': input.seamAllowance(),
         }
  
-    # Convert the dictionary into DataFrame 
-    specs = pd.DataFrame(data)
+    # # Convert the dictionary into DataFrame 
+    # specs = pd.DataFrame(data)
 
     # Calculate Area of Inner
     def PolyArea(x,y):
@@ -90,40 +90,26 @@ def data():
     Hc = input.chamberHeight()
     IWB = input.chamberWidth()
     OWB = (np.sqrt(((IWB/2)**2+(Hc-Hb)**2)*2)/2)*np.pi
-    chamberCSA = (np.pi*IWB*(Hc-Hb)*2/4)/2+(Hb*IWB)  #Baffle chamber cross-sectional area
-    chamberVol = chamberCSA * length
+    data['chamberCSA'] = (np.pi*IWB*(Hc-Hb)*2/4)/2+(Hb*IWB)  #Baffle chamber cross-sectional area
+    data['chamberVol'] = data['chamberCSA'] * length
 
-    area = PolyArea(x_ref,y_ref)
-    totalVolume = area * specs['Baffle Height'] # Only for non-diff cut
-    FPmet = (specs['Fill Power'] * 16.387064) / 28.34952 #CUIN/oz to CUCM/g
+    data['area'] = PolyArea(x_ref,y_ref)
+    data['totalVolume'] = data['area'] * data['Baffle Height'] # Only for non-diff cut
+    data['FPmet'] = (data['Fill Power'] * 16.387064) / 28.34952 #CUIN/oz to CUCM/g
     # print(FPmet)
-    gramsDown = (totalVolume/FPmet)
-    gramsDownAdj = gramsDown * (1 + (specs['% Down Overstuff'])/100)
-
-    outData = pd.DataFrame({'Length': [length],
-                  'Width': [width],
-                  'Area': [area],
-                  'Chamber Cross-sectional Area': [chamberCSA],
-                  'Volume Full Chamber': [chamberVol],
-                  'Total Volume': [totalVolume],
-                  'Grams of Down Required': [gramsDownAdj]
-        }
-        )
-    
-    data = pd.concat([specs,outData], axis = 1)
+    data['gramsDown'] = (data['totalVolume']/data['FPmet'])
+    data['gramsDownAdj'] = data['gramsDown'] * (1 + (data['% Down Overstuff'])/100)
 
     return data
 
-@render.data_frame
-def table():
-    return render.DataGrid(data())
 
-### Output Values---------------------------------------------------
-@render.text  
-def text():
-    return 'placeholder text'
+# ### Output Values---------------------------------------------------
+# @render.text  
+# def text():
+#     return data()
 
-ui.help_text("you need help")
+# # Help example
+# ui.help_text("you need help")
 
 # ### Baffle Plot---------------------------------------------------
 # @render_plotly
@@ -186,69 +172,70 @@ ui.help_text("you need help")
 
 #     return figBaffle
 
-# ## Design Plot---------------------------------------------------
-# @render_plotly
-# def design_plot():
-#     # init_height = input.maxHeight()
-#     # init_width = input.maxWidth()
-#     design_x = [0,1,2,3,4]
-#     design_y = [0,1,2,3,4]
-#     init_max_dim = input.maxLength() # equal height and width, can be optimised for performance
-#     init_height = init_max_dim
-#     init_width = init_max_dim
-#     points_vert = int(init_height * (4/5) + 1)
-#     points_hor = int(init_width * (4/5) + 1)
-#     fig = px.scatter(x=design_x, y=design_y
-#                     #  ).update_traces(marker_color="rgba(0,0,0,0)"
-#                                      ).add_traces(
-#         px.scatter(
-#             x=np.repeat(np.linspace(-init_width/2, init_width/2, points_hor), points_hor),
-#             y=np.tile(np.linspace(init_height, 0, points_vert), points_vert)
-#         )
-#         .update_traces(marker_color="rgba(0,0,0,0)")
-#         .data
-#     )
-
-#     fig.add_vline(x=0, line_width=3, line_dash="dash", line_color="grey")
-#     # fig.update_layout(clickmode="event")
-
-#     selected = fig.data[0]
-#     colors = ['#a3a7e4'] * 100
-#     selected.marker.color = colors
-#     selected.marker.size = [10] * 100
-#     fig.layout.hovermode = 'closest'
+## Design Plot---------------------------------------------------
+@render_plotly
+def design_plot():
+    init_max_dim = input.maxLength() # equal height and width, can be optimised for performance
+    init_height = init_max_dim
+    init_width = init_max_dim
+    points_vert = int(init_height * (4/5) + 1)
+    points_hor = int(init_width * (4/5) + 1)
+    fig=go.FigureWidget([
+        go.Scatter(x=np.repeat(np.linspace(0, init_width/2, points_hor), points_hor),
+                y=np.tile(np.linspace(init_height, 0, points_vert), points_vert),
+                mode='markers', name=""),
+        go.Scatter(x=[0], y=[0], mode="lines+markers", name="")
+        ])
 
 
-#     # @out.capture()
-#     # def base_click(trace, points, selector):
-#     #     global clicked
-#     #     clicked.append([points.xs[0],points.ys[0]])
-#     #     print(clicked)
-#     #     return
-#     # selected.on_click(base_click)
+    scatter=fig.data[0]
+    line = fig.data[1]
+    scatter.marker.color="rgba(0,0,0,0)"
+    scatter.marker.size=0
+    fig.layout.hovermode='closest'
+    fig.add_vline(x=0, line_width=1, line_dash="dash", line_color="grey")
+    fig.update(layout_showlegend=False)
 
-#     # # create our callback function
-#     # def update_point(trace, points, selector):
-#     #     print('test')
-#     #     print(points)
-#     #     # c = list(selected.marker.color)
-#     #     # s = list(selected.marker.size)
-#     #     # for i in points.point_inds:
-#     #     #     c[i] = '#bae2be'
-#     #     #     s[i] = 2000
-#     #     #     # test.append(i)
-#     #     #     # print(test)
-#     #     #     with fig.batch_update():
-#     #     #         selected.marker.color = c
-#     #     #         selected.marker.size = s
+    out = widgets.Output(layout={'border': '1px solid black'})
+    out.append_stdout('Output appended with append_stdout\n')
 
+    # create our callback function
+    @out.capture()
+    def update_point(trace, points, selector):
+        x = list(line.x) + points.xs
+        y = list(line.y) + points.ys
+        line.update(x=x, y=y)
+        #TODO: Update final point x=0 y=max
+        fig.to_dict()["data"][1]
+        print(fig.to_dict()["data"][1])
+    scatter.on_click(update_point)
 
-#     # selected.on_click(update_point)
+    # reset = widgets.Button(description="Reset")
+    # export = widgets.Button(description="Export")
+
+    # @out.capture()
+    # def on_reset_clicked(b):
+    #     line.update(x=[], y=[])
+    #     out.clear_output()
+    # @out.capture()
+    # def on_export_clicked(b):
+    #     print(fig.to_dict()["data"][1])
+
+    # reset.on_click(on_reset_clicked)
+    # export.on_click(on_export_clicked)
+
+    # widgets.VBox([widgets.VBox([fig, out])])
+    # widgets.VBox([widgets.HBox([export]), widgets.VBox([fig, out])])
     
 
-#     return fig
+    return fig
+
+@render.code
+def info():
+    return str([(fig.to_dict()["data"][1]['x']),(design_plot.widget._data[1]['y'])])
 
 # @render.code
-# def info():
-#     return str([(design_plot.widget._data[1]['x']),(design_plot.widget._data[1]['y'])])
+# def infoPoly():
+#     return str()
 
+# TODO: Extract line point data from initial plot. Need to provide export button.
