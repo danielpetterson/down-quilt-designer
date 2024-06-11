@@ -230,12 +230,14 @@ def design_plot():
 
     return fig
 
+# TODO: update
 @render.code
 def info():
-    return str([(fig.to_dict()["data"][1]['x']),(design_plot.widget._data[1]['y'])])
+    return str([design_plot.widget._data[1]['x'],design_plot.widget._data[1]['y']])
 
 # @render.code
 # def infoPoly():
 #     return str()
 
-# TODO: Extract line point data from initial plot. Need to provide export button.
+
+# TODO: Look into webgl for plotting
