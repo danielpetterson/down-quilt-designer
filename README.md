@@ -1,2 +1,2 @@
 # DownQuiltDesigner
-An MYOG friendly Dash app for quilt calculations
+An MYOG friendly Streamlit app for quilt calculations
