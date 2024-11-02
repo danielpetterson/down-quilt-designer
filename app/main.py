@@ -33,8 +33,8 @@ def create_plotting_graph(longest_dim):
     p.toolbar.active_tap = None
     # hover = HoverTool(tooltips=[("x", "$x{1.1}"),
     #                             ("y", "$y{1.1}")]) 
-    hover = HoverTool(tooltips=[("x", "@x"),
-                                ("y", "@y")]) 
+    hover = HoverTool(tooltips=[("x", "@x{1.11}"),
+                                ("y", "@y{1.11}")]) 
     p.add_tools(hover)
 
     return p
