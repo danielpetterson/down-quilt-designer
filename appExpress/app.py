@@ -210,6 +210,34 @@ def design_plot():
         print(fig.to_dict()["data"][1])
     scatter.on_click(update_point)
 
+    # Add dropdown
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                type = "buttons",
+                direction = "left",
+                buttons=list([
+                    dict(
+                        args=["type", "reset"],
+                        label="Reset",
+                        method="restyle"
+                    ),
+                    dict(
+                        args=["type", "export"],
+                        label="Export",
+                        method="restyle"
+                    )
+                ]),
+                pad={"r": 10, "t": 10},
+                showactive=True,
+                x=0,
+                xanchor="left",
+                y=0,
+                yanchor="top"
+            ),
+        ]
+    )
+
     # reset = widgets.Button(description="Reset")
     # export = widgets.Button(description="Export")
 
@@ -224,6 +252,8 @@ def design_plot():
     # reset.on_click(on_reset_clicked)
     # export.on_click(on_export_clicked)
 
+
+    # @shinywidgets?
     # widgets.VBox([widgets.VBox([fig, out])])
     # widgets.VBox([widgets.HBox([export]), widgets.VBox([fig, out])])
     
