@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from shapely.geometry import Polygon # type: ignore
 import plotly.graph_objects as go
@@ -17,6 +18,9 @@ import json
 
 
 ui.page_opts(title="Quilt Designer", fillable=True)
+
+# global points_selected
+# points_selected = []
 
 @expressify
 def left_side(**kwargs):
@@ -41,7 +45,13 @@ with ui.sidebar():
     left_side(multiple=False, id="acc_single")
 
 
-
+@render.plot
+def p():
+    np.random.seed(19680801)
+    x_rand = 100 + 15 * np.random.randn(437)
+    fig, ax = plt.subplots()
+    ax.hist(x_rand, int(input.n()), density=True)
+    return fig
 
 
 @reactive.calc
@@ -172,98 +182,81 @@ def data():
 
 #     return figBaffle
 
-## Design Plot---------------------------------------------------
-@render_plotly
-def design_plot():
-    init_max_dim = input.maxLength() # equal height and width, can be optimised for performance
-    init_height = init_max_dim
-    init_width = init_max_dim
-    points_vert = int(init_height * (4/5) + 1)
-    points_hor = int(init_width * (4/5) + 1)
-    fig=go.FigureWidget([
-        go.Scatter(x=np.repeat(np.linspace(0, init_width/2, points_hor), points_hor),
-                y=np.tile(np.linspace(init_height, 0, points_vert), points_vert),
-                mode='markers', name=""),
-        go.Scatter(x=[0], y=[0], mode="lines+markers", name="")
-        ])
+# ## Design Plot---------------------------------------------------
+# @render_plotly
+# def design_plot():
+#     init_max_dim = input.maxLength() # equal height and width, can be optimised for performance
+#     init_height = init_max_dim
+#     init_width = init_max_dim
+#     points_vert = int(init_height * (4/5) + 1)
+#     points_hor = int(init_width * (4/5) + 1)
+#     fig=go.FigureWidget([
+#         go.Scatter(x=np.repeat(np.linspace(0, init_width/2, points_hor), points_hor),
+#                 y=np.tile(np.linspace(init_height, 0, points_vert), points_vert),
+#                 mode='markers', name=""),
+#         go.Scatter(x=[0], y=[0], mode="lines+markers", name="")
+#         ])
 
 
-    scatter=fig.data[0]
-    line = fig.data[1]
-    scatter.marker.color="rgba(0,0,0,0)"
-    scatter.marker.size=0
-    fig.layout.hovermode='closest'
-    fig.add_vline(x=0, line_width=1, line_dash="dash", line_color="grey")
-    fig.update(layout_showlegend=False)
+#     scatter=fig.data[0]
+#     line = fig.data[1]
+#     scatter.marker.color="rgba(0,0,0,0)"
+#     scatter.marker.size=0
+#     fig.layout.hovermode='closest'
+#     fig.add_vline(x=0, line_width=1, line_dash="dash", line_color="grey")
+#     fig.update(layout_showlegend=False)
 
-    out = widgets.Output(layout={'border': '1px solid black'})
-    out.append_stdout('Output appended with append_stdout\n')
+#     out = widgets.Output(layout={'border': '1px solid black'})
+#     out.append_stdout('Output appended with append_stdout\n')
 
-    # create our callback function
-    @out.capture()
-    def update_point(trace, points, selector):
-        x = list(line.x) + points.xs
-        y = list(line.y) + points.ys
-        line.update(x=x, y=y)
-        #TODO: Update final point x=0 y=max
-        fig.to_dict()["data"][1]
-        print(fig.to_dict()["data"][1])
-    scatter.on_click(update_point)
+#     # create our callback function
+#     @out.capture()
+#     def update_point(trace, points, selector):
+#         x = list(line.x) + points.xs
+#         y = list(line.y) + points.ys
+#         line.update(x=x, y=y)
+#         #TODO: Update final point x=0 y=max
+#         fig.to_dict()["data"][1]
+#         # points_selected.append(2)
+#         # points_selected = list(zip(fig.to_dict()["data"][1]['x'], fig.to_dict()["data"][1]['y']))
+#         print(list(zip(fig.to_dict()["data"][1]['x'], fig.to_dict()["data"][1]['y'])))
 
-    # Add dropdown
-    fig.update_layout(
-        updatemenus=[
-            dict(
-                type = "buttons",
-                direction = "left",
-                buttons=list([
-                    dict(
-                        args=["type", "reset"],
-                        label="Reset",
-                        method="restyle"
-                    ),
-                    dict(
-                        args=["type", "export"],
-                        label="Export",
-                        method="restyle"
-                    )
-                ]),
-                pad={"r": 10, "t": 10},
-                showactive=True,
-                x=0,
-                xanchor="left",
-                y=0,
-                yanchor="top"
-            ),
-        ]
-    )
+#         return points_selected
 
-    # reset = widgets.Button(description="Reset")
-    # export = widgets.Button(description="Export")
+    
+#     scatter.on_click(update_point)
 
-    # @out.capture()
-    # def on_reset_clicked(b):
-    #     line.update(x=[], y=[])
-    #     out.clear_output()
-    # @out.capture()
-    # def on_export_clicked(b):
-    #     print(fig.to_dict()["data"][1])
+#     print(out.capture)
 
-    # reset.on_click(on_reset_clicked)
-    # export.on_click(on_export_clicked)
+    # # @out.capture()
+    # # def on_reset_clicked(b):
+    # #     line.update(x=[], y=[])
+    # #     out.clear_output()
+    # # @out.capture()
+    # # def on_export_clicked(b):
+    # #     print(fig.to_dict()["data"][1])
+
+    # # reset.on_click(on_reset_clicked)
+    # # export.on_click(on_export_clicked)
 
 
-    # @shinywidgets?
-    # widgets.VBox([widgets.VBox([fig, out])])
-    # widgets.VBox([widgets.HBox([export]), widgets.VBox([fig, out])])
+    # # # @shinywidgets?
+
+    # # widgets.VBox([widgets.HBox([export]), widgets.VBox([fig, out])])
+
+    # widgets.VBox([fig, out])
     
 
-    return fig
+    # return fig
 
-# TODO: update
-@render.code
-def info():
-    return str([design_plot.widget._data[1]['x'],design_plot.widget._data[1]['y']])
+# # TODO: update
+# @render.code
+# def info():
+#     # points_selected.append(1)
+#     # points_selected = [1,2,3]
+#     # print(points_selected)
+#     # return str([design_plot.widget._data[1]['x'],design_plot.widget._data[1]['y']])
+#     return points_selected
 
 # @render.code
 # def infoPoly():
