@@ -1,6 +1,6 @@
 # pacman::p_load(shiny, tidyverse, shinydashboard, lubridate, scales)
 library(shiny)
-library(bslib)
+# library(bslib)
 library(ggplot2)
 
 
@@ -17,51 +17,62 @@ options(digits=2)
 
 round_any = function(x, accuracy, f=round){f(x/ accuracy) * accuracy}
 
-ui <- shiny::pageWithSidebar(
-  headerPanel("Down Quilt Designer"),
-  sidebarPanel(
-    # accordion()
-  #   with ui.accordion_panel('Design'):
-  #     # Design
-    numericInput('maxDim','Longest Dimension (cm)', 250, min = 0),
-    numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
-    numericInput('chamberHeight','Max Chamber Height (cm)', 2.5, min = 0),
-    numericInput('chamberWidth','Chamber Width (cm)', 15, min = 0),
-    numericInput('percVertBaffle','% Length with Vertical Baffles', 100, min = 0, max = 100),
-  # with ui.accordion_panel('Materials'):
-  #     # Materials
-    numericInput('FP','Fill Power', 750, min = 500, max = 1000, step = 50),
-    numericInput('overstuff','% Overstuff', 10),
-    numericInput('innerWeight','Inner Fabric Weight (gsm)', 50, min = 0),
-    numericInput('outerWeight','Outer Fabric Weight (gsm', 50, min = 0),
-    numericInput('baffleWeight','Baffle Material Weight (gsm)', 25, min = 0),
-    numericInput('seamAllowance','Seam Allowance (cm)', 1, min = 0, step = 0.25)
-  ),
-  mainPanel(
-    fluidRow(column(width = 6,
+ui <- bslib::page_navbar(
+  title = "Down Quilt Designer",
+  theme = bslib::bs_theme(version=5), # Can specify base_font and code_font
+  sidebar = bslib::sidebar(
+    bslib::accordion(
+      bslib::accordion_panel(
+        "Design",# icon = bsicons::bs_icon("menu-app"),
+        numericInput('maxDim','Longest Dimension (cm)', 250, min = 0),
+        numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
+        numericInput('chamberHeight','Max Chamber Height (cm)', 2.5, min = 0),
+        numericInput('chamberWidth','Chamber Width (cm)', 15, min = 0),
+        numericInput('percVertBaffle','% Length with Vertical Baffles', 100, min = 0, max = 100)
+      ),
+      bslib::accordion_panel(
+        "Materials",# icon = bsicons::bs_icon("sliders"),
+        numericInput('FP','Fill Power', 750, min = 500, max = 1000, step = 50),
+        numericInput('overstuff','% Overstuff', 10),
+        numericInput('innerWeight','Inner Fabric Weight (gsm)', 50, min = 0),
+        numericInput('outerWeight','Outer Fabric Weight (gsm', 50, min = 0),
+        numericInput('baffleWeight','Baffle Material Weight (gsm)', 25, min = 0),
+        numericInput('seamAllowance','Seam Allowance (cm)', 1, min = 0, step = 0.25)
+      )
+
+  )
+),
+  bslib::nav_panel(title = "Dimensions",
+                  column(
+                    width = 6,
                     h4("Click to draw the right half of the quilt"),
                     verbatimTextOutput("hover_info"),
                     plotOutput("plot1",
-                               #add plot click functionality
-                               click = "plot_click",
-                               #add the hover options
-                               hover = hoverOpts(
-                                 id = "plot_hover",
-                                 nullOutside = TRUE)),
-                                 h4("Or define vertices manually"),
-                                 shiny::numericInput('x_add','X', 0, min = 0),
-                                 shiny::numericInput('y_add','Y', 0, min = 0)
-                                ),
-             column(width = 6,
-                    h4("Table of points on plot"),
-                    tableOutput("table"))),
-      # button to add vertices
-      actionButton("add_point", "Add Point"),
-      # button to remove last vertex
-      actionButton("rem_point", "Remove Last Point"),
+                          #add plot click functionality
+                          click = "plot_click",
+                          #add the hover options
+                          hover = hoverOpts(
+                            id = "plot_hover",
+                            nullOutside = TRUE)),
+                            h4("Or define vertices manually"),
+                            shiny::numericInput('x_add','X', 0, min = 0),
+                            shiny::numericInput('y_add','Y', 0, min = 0),
+                            # button to add vertices
+                            actionButton("add_point", "Add Point"),
+                            # button to remove last vertex
+                            actionButton("rem_point", "Remove Last Point"),
+                          ),
+                    column(
+                      width = 6,
+                      h4("Table of points on plot"),
+                      tableOutput("table"),
+
 
 
 )
+  ),
+  bslib::nav_panel(title = "Output","2")
+
 )
 
 server = function(input, output){
