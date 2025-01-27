@@ -15,7 +15,56 @@ library(ggplot2)
 
 options(digits=2)
 
+# Functions
+#---------------------------
 round_any = function(x, accuracy, f=round){f(x/ accuracy) * accuracy}
+#---------------------------
+
+
+# Frontend
+#---------------------------
+manual_entry_card <- bslib::card(
+  bslib::card_body(
+    bslib::layout_column_wrap(
+      width = 1/2,
+      # manual input
+      shiny::numericInput('x_add','X', 0, min = 0),
+      shiny::numericInput('y_add','Y', 0, min = 0)
+    )
+  )
+)
+
+plot_input_card <- bslib::card(
+  bslib::card_header("Define vertices manually or click to draw right side of the quilt"),
+    manual_entry_card, 
+    # button to add vertices
+    actionButton("add_point", "Add Point"),
+    # button to remove last vertex
+    actionButton("rem_point", "Remove Last Point"),
+    verbatimTextOutput("hover_info"),
+    plotOutput("plot1",
+            #add plot click functionality
+              click = "plot_click",
+            #add the hover options
+              hover = hoverOpts(
+                id = "plot_hover",
+                nullOutside = TRUE)
+              )
+)
+
+selected_points_card <- bslib::card(
+  bslib::card_header("Selected Points"),
+  tableOutput("table")
+)
+
+cross_section_card <- bslib::card(
+  bslib::card_header("Scrolling content"),
+  "test"
+)
+card2 <- bslib::card(
+  bslib::card_header("Nothing much here"),
+  "This is it."
+)
 
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
@@ -42,39 +91,31 @@ ui <- bslib::page_navbar(
 
   )
 ),
-  bslib::nav_panel(title = "Dimensions",
-                  column(
-                    width = 6,
-                    h4("Click to draw the right half of the quilt"),
-                    verbatimTextOutput("hover_info"),
-                    plotOutput("plot1",
-                          #add plot click functionality
-                          click = "plot_click",
-                          #add the hover options
-                          hover = hoverOpts(
-                            id = "plot_hover",
-                            nullOutside = TRUE)),
-                            h4("Or define vertices manually"),
-                            shiny::numericInput('x_add','X', 0, min = 0),
-                            shiny::numericInput('y_add','Y', 0, min = 0),
-                            # button to add vertices
-                            actionButton("add_point", "Add Point"),
-                            # button to remove last vertex
-                            actionButton("rem_point", "Remove Last Point"),
-                          ),
-                    column(
-                      width = 6,
-                      h4("Table of points on plot"),
-                      tableOutput("table"),
-
-
-
-)
+bslib::nav_panel(
+  title = "Dimensions",
+  bslib::layout_column_wrap(
+    width = NULL,
+    height = 800,
+    fill = FALSE,
+    style = bslib::css(grid_template_columns = "2fr 1fr"),
+    plot_input_card, 
+    selected_points_card)
   ),
-  bslib::nav_panel(title = "Output","2")
+bslib::nav_panel(
+  title = "Output",
+  bslib::layout_column_wrap(
+                  width = 1/4,
+                  height = 300,
+                  cross_section_card,
+                  card2)
+                )
 
 )
+#---------------------------
 
+
+# Backend
+#---------------------------
 server = function(input, output){
   
   # set up reactive dataframe
@@ -124,6 +165,7 @@ server = function(input, output){
   })
 
 }
+#---------------------------
 
-# run app
+# Run app
 shiny::shinyApp(ui, server)
