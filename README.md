@@ -1,2 +1,2 @@
 # DownQuiltDesigner
-An MYOG friendly Streamlit app for quilt calculations
+An MYOG friendly serverless Shinylive app for quilt calculations
