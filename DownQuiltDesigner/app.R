@@ -7,7 +7,6 @@ library(ggplot2)
 ##TODO:
 # Make mirror x negative
 
-# Use completed dataset for constructing final plot
 # Look into webGL for second plot
 # As other specs added we add lines to plot and baffle height?
 # Does webgl support 3d structure
@@ -25,7 +24,7 @@ round_any = function(x, accuracy, f=round){f(x/ accuracy) * accuracy}
 #---------------------------
 design_accordion <- bslib::accordion_panel(
   "Design",# icon = bsicons::bs_icon("menu-app"),
-  numericInput('maxDim','Longest Dimension (cm)', 250, min = 0),
+  numericInput('maxDim','Longest Dimension (cm)', 210, min = 0),
   numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
   numericInput('chamberHeight','Max Chamber Height (cm)', 2.5, min = 0),
   numericInput('chamberWidth','Chamber Width (cm)', 15, min = 0),
@@ -92,7 +91,7 @@ card2 <- bslib::card(
 # UI layout
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
-  theme = bslib::bs_theme(version=5), # Can specify base_font and code_font
+  theme = bslib::bs_theme(version=5, bootswatch = "sketchy"), # Can specify base_font and code_font
   sidebar = bslib::sidebar(
     bslib::accordion(
       design_accordion,
@@ -126,10 +125,10 @@ bslib::nav_panel(
 #---------------------------
 server = function(input, output){
   
-  # set up reactive dataframe
+  # set up reactive dataframe with example data
   values <- shiny::reactiveValues()
-  values$DT <- data.frame(x = c(0),
-                          y = c(0))
+  values$DT <- data.frame(x = c(0, 71, 71, 50, 0),
+                          y = c(210, 210, 100, 0, 0))
   
   # create design plot
   output$plot1 = shiny::renderPlot({
