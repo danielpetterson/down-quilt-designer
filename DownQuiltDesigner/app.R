@@ -23,6 +23,25 @@ round_any = function(x, accuracy, f=round){f(x/ accuracy) * accuracy}
 
 # Frontend
 #---------------------------
+design_accordion <- bslib::accordion_panel(
+  "Design",# icon = bsicons::bs_icon("menu-app"),
+  numericInput('maxDim','Longest Dimension (cm)', 250, min = 0),
+  numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
+  numericInput('chamberHeight','Max Chamber Height (cm)', 2.5, min = 0),
+  numericInput('chamberWidth','Chamber Width (cm)', 15, min = 0),
+  numericInput('percVertBaffle','% Length with Vertical Baffles', 100, min = 0, max = 100)
+)
+
+materials_accordion <- bslib::accordion_panel(
+  "Materials",# icon = bsicons::bs_icon("sliders"),
+  numericInput('FP','Fill Power', 750, min = 500, max = 1000, step = 50),
+  numericInput('overstuff','% Overstuff', 10),
+  numericInput('innerWeight','Inner Fabric Weight (gsm)', 50, min = 0),
+  numericInput('outerWeight','Outer Fabric Weight (gsm', 50, min = 0),
+  numericInput('baffleWeight','Baffle Material Weight (gsm)', 25, min = 0),
+  numericInput('seamAllowance','Seam Allowance (cm)', 1, min = 0, step = 0.25)
+)
+
 manual_entry_card <- bslib::card(
   bslib::card_body(
     bslib::layout_column_wrap(
@@ -37,10 +56,11 @@ manual_entry_card <- bslib::card(
 plot_input_card <- bslib::card(
   bslib::card_header("Define vertices manually or click to draw right side of the quilt"),
     manual_entry_card, 
+    bslib::card_body(fillable = T,
     # button to add vertices
     actionButton("add_point", "Add Point"),
-    # button to remove last vertex
-    actionButton("rem_point", "Remove Last Point"),
+    
+    ),
     verbatimTextOutput("hover_info"),
     plotOutput("plot1",
             #add plot click functionality
@@ -49,7 +69,9 @@ plot_input_card <- bslib::card(
               hover = hoverOpts(
                 id = "plot_hover",
                 nullOutside = TRUE)
-              )
+              ),
+    # button to remove last vertex
+    actionButton("rem_point", "Remove Last Point")
 )
 
 selected_points_card <- bslib::card(
@@ -66,29 +88,15 @@ card2 <- bslib::card(
   "This is it."
 )
 
+
+# UI layout
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
   theme = bslib::bs_theme(version=5), # Can specify base_font and code_font
   sidebar = bslib::sidebar(
     bslib::accordion(
-      bslib::accordion_panel(
-        "Design",# icon = bsicons::bs_icon("menu-app"),
-        numericInput('maxDim','Longest Dimension (cm)', 250, min = 0),
-        numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
-        numericInput('chamberHeight','Max Chamber Height (cm)', 2.5, min = 0),
-        numericInput('chamberWidth','Chamber Width (cm)', 15, min = 0),
-        numericInput('percVertBaffle','% Length with Vertical Baffles', 100, min = 0, max = 100)
-      ),
-      bslib::accordion_panel(
-        "Materials",# icon = bsicons::bs_icon("sliders"),
-        numericInput('FP','Fill Power', 750, min = 500, max = 1000, step = 50),
-        numericInput('overstuff','% Overstuff', 10),
-        numericInput('innerWeight','Inner Fabric Weight (gsm)', 50, min = 0),
-        numericInput('outerWeight','Outer Fabric Weight (gsm', 50, min = 0),
-        numericInput('baffleWeight','Baffle Material Weight (gsm)', 25, min = 0),
-        numericInput('seamAllowance','Seam Allowance (cm)', 1, min = 0, step = 0.25)
-      )
-
+      design_accordion,
+      materials_accordion
   )
 ),
 bslib::nav_panel(
@@ -120,12 +128,13 @@ server = function(input, output){
   
   # set up reactive dataframe
   values <- shiny::reactiveValues()
-  values$DT <- data.frame(x = c(0,0),
-                          y = c(0,0))
+  values$DT <- data.frame(x = c(0),
+                          y = c(0))
   
   # create design plot
   output$plot1 = shiny::renderPlot({
     ggplot(values$DT, aes(x = x, y = y)) +
+      geom_vline(xintercept = 0, linetype = "dotted", size = 1.5) +
       geom_point(aes(), size = 2) +
       geom_path() +
       lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
