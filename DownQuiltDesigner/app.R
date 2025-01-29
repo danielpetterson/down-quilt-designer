@@ -2,9 +2,11 @@
 library(shiny)
 # library(bslib)
 library(ggplot2)
+library(sf)
 
 
 ##TODO:
+# fix ggplot dimensions
 # Make mirror x negative
 
 # Look into webGL for second plot
@@ -61,7 +63,7 @@ plot_input_card <- bslib::card(
     
     ),
     verbatimTextOutput("hover_info"),
-    plotOutput("plot1",
+    plotOutput("input_plot",
             #add plot click functionality
               click = "plot_click",
             #add the hover options
@@ -70,7 +72,8 @@ plot_input_card <- bslib::card(
                 nullOutside = TRUE)
               ),
     # button to remove last vertex
-    actionButton("rem_point", "Remove Last Point")
+    actionButton("rem_point", "Remove Last Point"),
+    actionButton("rem_all_points", "Clear")
 )
 
 selected_points_card <- bslib::card(
@@ -80,7 +83,8 @@ selected_points_card <- bslib::card(
 
 cross_section_card <- bslib::card(
   bslib::card_header("Scrolling content"),
-  "test"
+  # plotOutput("poly_plot")
+  verbatimTextOutput("test")
 )
 card2 <- bslib::card(
   bslib::card_header("Nothing much here"),
@@ -127,15 +131,30 @@ server = function(input, output){
   
   # set up reactive dataframe with example data
   values <- shiny::reactiveValues()
-  values$DT <- data.frame(x = c(0, 71, 71, 50, 0),
-                          y = c(210, 210, 100, 0, 0))
+  values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
+                                  y = c(210, 210, 100, 0, 0))
+
+  # # test
+  # values$user_input <- data.frame(x = c(0, 5, 5, 0),
+  # y = c(10, 10, 0, 0))
+  
+all_selected_points_x <- shiny::reactive({
+  req(values$user_input)
+  c(values$user_input$x, -rev(values$user_input$x))
+})
+
+all_selected_points_y <- shiny::reactive({
+  req(values$user_input)
+  c(values$user_input$y, rev(values$user_input$y))
+})
+  
   
   # create design plot
-  output$plot1 = shiny::renderPlot({
-    ggplot(values$DT, aes(x = x, y = y)) +
-      geom_vline(xintercept = 0, linetype = "dotted", size = 1.5) +
-      geom_point(aes(), size = 2) +
-      geom_path() +
+  output$input_plot = shiny::renderPlot({
+    ggplot(values$user_input, aes(x = x, y = y)) +
+      geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+      geom_point(aes()) +
+      geom_path(linewidth = 1.5) +
       lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
       theme(legend.position = "bottom")
   })
@@ -145,25 +164,35 @@ server = function(input, output){
     add_row <- data.frame(x = round_any(input$plot_click$x, 0.5),
                           y = round_any(input$plot_click$y, 0.5))
     # add row to the data.frame
-    values$DT <- rbind(values$DT[1:nrow(values$DT)-1,], add_row, values$DT[nrow(values$DT),])
+    values$user_input <- rbind(values$user_input[1:nrow(values$user_input)-1,], add_row, values$user_input[nrow(values$user_input),])
   })
 
   # add row on actionButton click
   shiny::observeEvent(input$add_point, {
-    add_row <- rbind(values$DT, c(input$x_add, input$y_add))
-    values$DT <- add_row
+    add_row <- rbind(values$user_input, c(input$x_add, input$y_add))
+    values$user_input <- add_row
   })
   
   # remove row on actionButton click
   shiny::observeEvent(input$rem_point, {
-    rem_row <- values$DT[-nrow(values$DT), ]
-    values$DT <- rem_row
+    rem_row <- values$user_input[-nrow(values$user_input), ]
+    values$user_input <- rem_row
   })
+
+  # clear all selected points on actionButton click
+    # remove row on actionButton click
+    shiny::observeEvent(input$rem_all_points, {
+      values$user_input <- data.frame(x=double(),
+                              y=double()
+    )
+    })
   
   
   # render a table of the dataframe
   output$table <- shiny::renderTable({
-    values$DT
+    values$user_input
+    ## Test
+    # all_selected_points()
   })
   
   output$hover_info <- shiny::renderPrint({
@@ -171,6 +200,8 @@ server = function(input, output){
       cat("X value:", formatC(round_any(hover$x, 0.5), digits = 1, format = "f"), "\n")
       cat("Y value:", formatC(round_any(hover$y, 0.5  ), digits = 1, format = "f"))
   })
+
+  output$test <- shiny::renderPrint({sf::st_area(sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y()))))})
 
 }
 #---------------------------
