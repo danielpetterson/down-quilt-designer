@@ -7,9 +7,8 @@ library(sf)
 
 ##TODO:
 # fix ggplot dimensions
-# Make mirror x negative
 
-# Look into webGL for second plot
+# Add baffle lines/polygons
 # As other specs added we add lines to plot and baffle height?
 # Does webgl support 3d structure
 # rgl is an option. Others should be considered
