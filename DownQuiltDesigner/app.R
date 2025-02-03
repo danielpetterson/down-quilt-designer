@@ -2,7 +2,6 @@
 library(shiny)
 # library(bslib)
 library(ggplot2)
-# library(plotly)
 library(sf)
 
 
@@ -148,19 +147,75 @@ all_selected_points_y <- shiny::reactive({
   c(values$user_input$y, rev(values$user_input$y))
 })
   
-cross_section_x <- shiny::reactive({
+#reactive expression to calculate subpolygons
+sub_polys <- shiny::reactive({
   req(all_selected_points_x)
-  width <- max(all_selected_points_x()) * 2
-  c(0, seq(0,width))
-})
+  req(all_selected_points_y)
+  req(input$chamberWidth)
+
+  #create polygon from selected points
+  poly <- sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y())))
+  #create bounding boxes that are chamberWidth apart until greatest width
+  bbox <- st_bbox(poly)
+  # Create vertical lines spaced chamberWidth apart
+  x_seq <- seq(bbox["xmin"], bbox["xmax"], by = input$chamberWidth)
+  lines <- lapply(x_seq, function(x) {
+    st_linestring(rbind(c(x, bbox["ymin"]), c(x, bbox["ymax"])))
+  })
+  # Combine lines into a multi-line geometry
+  multiline <- st_sfc(lines, crs = st_crs(polygon))
+  bboxes <- list()
+  for (i in 1:(length(multiline)-1))
+    {
+    current_line <- multiline[i]
+    next_line <- multiline[i+1]
+
+    bbox_section <- st_polygon(list(rbind(
+      st_coordinates(current_line)[1:2,1:2],
+      st_coordinates(next_line)[2:1,1:2],
+      st_coordinates(current_line)[1,1:2]
+    )))
+
+    bboxes[i] <- bbox_section
+  }
+
+  subpolys <- list()
+  for (i in 1:length(bboxes))
+  {
+   subpolys[i] <- st_intersection(poly, st_polygon(bboxes[i]))
+  }
+
+  subpolys
   
-cross_section_y <- shiny::reactive({
-  req(input$baffleHeight)
-  # req(input$chamberHeight)
-  req(cross_section_x)
-  # c(0,input$baffleHeight + seq(1,length(cross_section_x()),1), 0)
-  c(0, seq(1,length(cross_section_x())-2) + input$baffleHeight, 0)
+  #use intersection to find input polygon values within each bounding box
+  # bbox_contains <- function(bbox) {
+  #   intersection <- st_intersection(x = bbox, y = poly)
+  #   return(intersection)
+  # }
+  # subpolys <- lapply(st_polygon(bboxes), bbox_contains)
+  # subpolys
+
+  # <- st_intersection(poly, test_poly)
+  #convert values to subpolygons
+
+  #return list of subpolygons
+    
 })
+
+  
+# cross_section_x <- shiny::reactive({
+#   req(all_selected_points_x)
+#   width <- max(all_selected_points_x()) * 2
+#   c(0, seq(0,width))
+# })
+  
+# cross_section_y <- shiny::reactive({
+#   req(input$baffleHeight)
+#   # req(input$chamberHeight)
+#   req(cross_section_x)
+#   # c(0,input$baffleHeight + seq(1,length(cross_section_x()),1), 0)
+#   c(0, seq(1,length(cross_section_x())-2) + input$baffleHeight, 0)
+# })
   
   # create design plot
   output$input_plot <- shiny::renderPlot({
@@ -223,11 +278,20 @@ cross_section_y <- shiny::reactive({
       theme(legend.position = "bottom")
   })
 
+  output$cross_section_plot2 <- shiny::renderPlot({
+    ggplot() +
+      # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+      geom_path(aes(x = cross_section_x(), y = cross_section_y())) +
+      # geom_path(linewidth = 1.5) +
+      # lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
+      theme(legend.position = "bottom")
+  })
+
   # output$cross_section_plot <- plotly::renderPlotly({
   #   plotly::plot_ly(values$user_input, x = ~x, y = ~y, type = 'scatter', mode = 'markers')
   # })
 
-  output$test <- shiny::renderPrint({sf::st_area(sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y()))))})
+  output$test <- shiny::renderPrint({sub_polys()})
 
 }
 #---------------------------
