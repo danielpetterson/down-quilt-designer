@@ -2,6 +2,7 @@
 library(shiny)
 # library(bslib)
 library(ggplot2)
+# library(plotly)
 library(sf)
 
 
@@ -80,14 +81,14 @@ selected_points_card <- bslib::card(
   tableOutput("table")
 )
 
-cross_section_card <- bslib::card(
-  bslib::card_header("Scrolling content"),
+card2 <- bslib::card(
+  bslib::card_header("Text Output"),
   # plotOutput("poly_plot")
   verbatimTextOutput("test")
 )
-card2 <- bslib::card(
-  bslib::card_header("Nothing much here"),
-  "This is it."
+cross_section_card <- bslib::card(
+  bslib::card_header("Cross Sectional View"),
+  plotOutput("cross_section_plot")
 )
 
 
@@ -114,7 +115,7 @@ bslib::nav_panel(
 bslib::nav_panel(
   title = "Output",
   bslib::layout_column_wrap(
-                  width = 1/4,
+                  width = 1/2,
                   height = 300,
                   cross_section_card,
                   card2)
@@ -147,9 +148,22 @@ all_selected_points_y <- shiny::reactive({
   c(values$user_input$y, rev(values$user_input$y))
 })
   
+cross_section_x <- shiny::reactive({
+  req(all_selected_points_x)
+  width <- max(all_selected_points_x()) * 2
+  c(0, seq(0,width))
+})
+  
+cross_section_y <- shiny::reactive({
+  req(input$baffleHeight)
+  # req(input$chamberHeight)
+  req(cross_section_x)
+  # c(0,input$baffleHeight + seq(1,length(cross_section_x()),1), 0)
+  c(0, seq(1,length(cross_section_x())-2) + input$baffleHeight, 0)
+})
   
   # create design plot
-  output$input_plot = shiny::renderPlot({
+  output$input_plot <- shiny::renderPlot({
     ggplot(values$user_input, aes(x = x, y = y)) +
       geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
       geom_point(aes()) +
@@ -199,6 +213,19 @@ all_selected_points_y <- shiny::reactive({
       cat("X value:", formatC(round_any(hover$x, 0.5), digits = 1, format = "f"), "\n")
       cat("Y value:", formatC(round_any(hover$y, 0.5  ), digits = 1, format = "f"))
   })
+
+  output$cross_section_plot <- shiny::renderPlot({
+    ggplot() +
+      # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+      geom_path(aes(x = cross_section_x(), y = cross_section_y())) +
+      # geom_path(linewidth = 1.5) +
+      # lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
+      theme(legend.position = "bottom")
+  })
+
+  # output$cross_section_plot <- plotly::renderPlotly({
+  #   plotly::plot_ly(values$user_input, x = ~x, y = ~y, type = 'scatter', mode = 'markers')
+  # })
 
   output$test <- shiny::renderPrint({sf::st_area(sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y()))))})
 
