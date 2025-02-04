@@ -1,17 +1,21 @@
 # pacman::p_load(shiny, tidyverse, shinydashboard, lubridate, scales)
 library(shiny)
-# library(bslib)
+library(bslib)
 library(ggplot2)
 library(sf)
 
 
 ##TODO:
-# fix ggplot dimensions
+# (gg)Plot subpolygons with pointer displaying info about:
+# - Area
+# - Volume
+# - Grams of down needed
 
-# Add baffle lines/polygons
-# As other specs added we add lines to plot and baffle height?
-# Does webgl support 3d structure
-# rgl is an option. Others should be considered
+# Cross section image
+
+# Calculate dims for upper if diff cut
+
+# Info panel with expected weight and total down, baffle material needed
 
 options(digits=2)
 
@@ -37,7 +41,7 @@ materials_accordion <- bslib::accordion_panel(
   numericInput('FP','Fill Power', 750, min = 500, max = 1000, step = 50),
   numericInput('overstuff','% Overstuff', 10),
   numericInput('innerWeight','Inner Fabric Weight (gsm)', 50, min = 0),
-  numericInput('outerWeight','Outer Fabric Weight (gsm', 50, min = 0),
+  numericInput('outerWeight','Outer Fabric Weight (gsm)', 50, min = 0),
   numericInput('baffleWeight','Baffle Material Weight (gsm)', 25, min = 0),
   numericInput('seamAllowance','Seam Allowance (cm)', 1, min = 0, step = 0.25)
 )
@@ -63,6 +67,7 @@ plot_input_card <- bslib::card(
     ),
     verbatimTextOutput("hover_info"),
     plotOutput("input_plot",
+              height = 600,
             #add plot click functionality
               click = "plot_click",
             #add the hover options
@@ -87,9 +92,8 @@ card2 <- bslib::card(
 )
 cross_section_card <- bslib::card(
   bslib::card_header("Cross Sectional View"),
-  plotOutput("cross_section_plot")
+  plotOutput("vol_plot")
 )
-
 
 # UI layout
 ui <- bslib::page_navbar(
@@ -105,7 +109,7 @@ bslib::nav_panel(
   title = "Dimensions",
   bslib::layout_column_wrap(
     width = NULL,
-    height = 800,
+    height = NULL,
     fill = FALSE,
     style = bslib::css(grid_template_columns = "2fr 1fr"),
     plot_input_card, 
@@ -132,10 +136,6 @@ server = function(input, output){
   values <- shiny::reactiveValues()
   values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
                                   y = c(210, 210, 100, 0, 0))
-
-  # # test
-  # values$user_input <- data.frame(x = c(0, 5, 5, 0),
-  # y = c(10, 10, 0, 0))
   
 all_selected_points_x <- shiny::reactive({
   req(values$user_input)
@@ -148,17 +148,18 @@ all_selected_points_y <- shiny::reactive({
 })
   
 #reactive expression to calculate subpolygons
-sub_polys <- shiny::reactive({
+polygon_df <- shiny::reactive({
   req(all_selected_points_x)
   req(all_selected_points_y)
   req(input$chamberWidth)
+  req(input$baffleHeight)
 
   #create polygon from selected points
   poly <- sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y())))
   #create bounding boxes that are chamberWidth apart until greatest width
   bbox <- st_bbox(poly)
   # Create vertical lines spaced chamberWidth apart
-  x_seq <- seq(bbox["xmin"], bbox["xmax"], by = input$chamberWidth)
+  x_seq <- seq(0, (bbox["xmax"] + input$chamberWidth), by = input$chamberWidth)
   lines <- lapply(x_seq, function(x) {
     st_linestring(rbind(c(x, bbox["ymin"]), c(x, bbox["ymax"])))
   })
@@ -178,29 +179,30 @@ sub_polys <- shiny::reactive({
 
     bboxes[i] <- bbox_section
   }
-
+  #use intersection to find input polygon values within each bounding box
   subpolys <- list()
+  area <- list()
+  id = list()
   for (i in 1:length(bboxes))
   {
-   subpolys[i] <- st_intersection(poly, st_polygon(bboxes[i]))
+    intersect <- st_intersection(poly, st_polygon(bboxes[i]))
+    subpolys[i] <- intersect
+    area[i] <- st_area(intersect)
+    id[i] <-i
   }
-
-  subpolys
-  
-  #use intersection to find input polygon values within each bounding box
-  # bbox_contains <- function(bbox) {
-  #   intersection <- st_intersection(x = bbox, y = poly)
-  #   return(intersection)
-  # }
-  # subpolys <- lapply(st_polygon(bboxes), bbox_contains)
-  # subpolys
-
-  # <- st_intersection(poly, test_poly)
-  #convert values to subpolygons
-
-  #return list of subpolygons
-    
-})
+  subpolys <- lapply(subpolys, as.data.frame)
+  for (i in 1:length(subpolys))
+    {
+      names(subpolys[[i]]) <- c('x','y')
+      subpolys[[i]]['ID'] <- id[i]
+      subpolys[[i]]['Area'] <- area[i]
+    # Placehold volume calc. Needs to factor in max baffle height
+      subpolys[[i]]['Volume'] <- as.numeric(area[i]) * as.numeric(input$baffleHeight)
+      
+  }
+  polygon_df <- do.call(rbind, subpolys)
+  polygon_df
+  })
 
   
 # cross_section_x <- shiny::reactive({
@@ -269,29 +271,22 @@ sub_polys <- shiny::reactive({
       cat("Y value:", formatC(round_any(hover$y, 0.5  ), digits = 1, format = "f"))
   })
 
-  output$cross_section_plot <- shiny::renderPlot({
-    ggplot() +
-      # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-      geom_path(aes(x = cross_section_x(), y = cross_section_y())) +
-      # geom_path(linewidth = 1.5) +
-      # lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
-      theme(legend.position = "bottom")
-  })
+  output$vol_plot <- shiny::renderPlot({
+    req(polygon_df)
 
-  output$cross_section_plot2 <- shiny::renderPlot({
-    ggplot() +
-      # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-      geom_path(aes(x = cross_section_x(), y = cross_section_y())) +
-      # geom_path(linewidth = 1.5) +
+    vol_plot <- ggplot() +
       # lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
+      geom_path(data = polygon_df(), aes(x = x, y = y, group = ID)) +
       theme(legend.position = "bottom")
+
+    vol_plot
   })
 
   # output$cross_section_plot <- plotly::renderPlotly({
   #   plotly::plot_ly(values$user_input, x = ~x, y = ~y, type = 'scatter', mode = 'markers')
   # })
 
-  output$test <- shiny::renderPrint({sub_polys()})
+  output$test <- shiny::renderPrint({polygon_df()})
 
 }
 #---------------------------
