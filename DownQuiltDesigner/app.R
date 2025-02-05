@@ -2,6 +2,7 @@
 library(shiny)
 library(bslib)
 library(ggplot2)
+library(dplyr)
 library(sf)
 
 
@@ -90,10 +91,18 @@ card2 <- bslib::card(
   # plotOutput("poly_plot")
   verbatimTextOutput("test")
 )
+
+
 cross_section_card <- bslib::card(
   bslib::card_header("Cross Sectional View"),
-  plotOutput("vol_plot")
+  plotOutput("area_plot")
 )
+
+area_card <- bslib::card(
+  bslib::card_header("Aerial View"),
+  plotOutput("area_plot")
+)
+
 
 # UI layout
 ui <- bslib::page_navbar(
@@ -120,7 +129,7 @@ bslib::nav_panel(
   bslib::layout_column_wrap(
                   width = 1/2,
                   height = 300,
-                  cross_section_card,
+                  area_card,
                   card2)
                 )
 
@@ -186,8 +195,8 @@ polygon_df <- shiny::reactive({
   for (i in 1:length(bboxes))
   {
     intersect <- st_intersection(poly, st_polygon(bboxes[i]))
-    subpolys[i] <- intersect
-    area[i] <- st_area(intersect)
+    subpolys[i] <- st_segmentize(intersect, 1)
+    # area[i] <- st_area(intersect)
     id[i] <-i
   }
   subpolys <- lapply(subpolys, as.data.frame)
@@ -195,13 +204,23 @@ polygon_df <- shiny::reactive({
     {
       names(subpolys[[i]]) <- c('x','y')
       subpolys[[i]]['ID'] <- id[i]
-      subpolys[[i]]['Area'] <- area[i]
+      # subpolys[[i]]['segmentWidth'] <- subpolys[[i]]['x'] - min(subpolys[[i]]['x'])
+      # subpolys[[i]]['Area'] <- area[i]
     # Placehold volume calc. Needs to factor in max baffle height
-      subpolys[[i]]['Volume'] <- as.numeric(area[i]) * as.numeric(input$baffleHeight)
+      # subpolys[[i]]['Volume'] <- as.numeric(area[i]) * as.numeric(input$baffleHeight)
       
   }
   polygon_df <- do.call(rbind, subpolys)
   polygon_df
+
+  cross_section_df <- polygon_df %>%
+    group_by(ID) %>%
+    mutate(segmentWidth = x - min(x)) %>%
+    distinct(y, .keep_all = T) %>%
+    filter(segmentWidth > 0)
+    # filter(segmentWidth > 0 |((x == min(x)) & (y == max(y) | y == min(y))) | x == max(x))
+
+  as.data.frame(cross_section_df)
   })
 
   
@@ -225,8 +244,9 @@ polygon_df <- shiny::reactive({
       geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
       geom_point(aes()) +
       geom_path(linewidth = 1.5) +
-      lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
-      theme(legend.position = "bottom")
+      lims(x = c(0, input$maxDim), y = c(0, input$maxDim)) +
+      theme(legend.position = "bottom") +
+      coord_fixed()
   })
   
   # add new row to reactive dataframe upon clicking plot
@@ -271,15 +291,15 @@ polygon_df <- shiny::reactive({
       cat("Y value:", formatC(round_any(hover$y, 0.5  ), digits = 1, format = "f"))
   })
 
-  output$vol_plot <- shiny::renderPlot({
+  output$area_plot <- shiny::renderPlot({
     req(polygon_df)
 
-    vol_plot <- ggplot() +
+    area_plot <- ggplot() +
       # lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
       geom_path(data = polygon_df(), aes(x = x, y = y, group = ID)) +
       theme(legend.position = "bottom")
 
-    vol_plot
+    area_plot
   })
 
   # output$cross_section_plot <- plotly::renderPlotly({
