@@ -14,9 +14,10 @@ library(sf)
 
 # Cross section image
 
-# Calculate dims for upper if diff cut
-
 # Info panel with expected weight and total down, baffle material needed
+
+# Final upper width is width of chamber roof + baffleLength + seam allowance
+# Final lower is input dims + seam allowance
 
 options(digits=2)
 
@@ -88,14 +89,18 @@ selected_points_card <- bslib::card(
 
 card2 <- bslib::card(
   bslib::card_header("Text Output"),
-  # plotOutput("poly_plot")
   verbatimTextOutput("test")
+)
+
+card3 <- bslib::card(
+  bslib::card_header("Test Output"),
+  verbatimTextOutput("cross_section_plot_df")
 )
 
 
 cross_section_card <- bslib::card(
   bslib::card_header("Cross Sectional View"),
-  plotOutput("area_plot")
+  plotOutput("cross_section_plot")
 )
 
 area_card <- bslib::card(
@@ -103,6 +108,28 @@ area_card <- bslib::card(
   plotOutput("area_plot")
 )
 
+plot_input_card <- bslib::card(
+  bslib::card_header("Define vertices manually or click to draw right side of the quilt"),
+    manual_entry_card, 
+    bslib::card_body(fillable = T,
+    # button to add vertices
+    actionButton("add_point", "Add Point"),
+    
+    ),
+    verbatimTextOutput("hover_info"),
+    plotOutput("input_plot",
+              height = 600,
+            #add plot click functionality
+              click = "plot_click",
+            #add the hover options
+              hover = hoverOpts(
+                id = "plot_hover",
+                nullOutside = TRUE)
+              ),
+    # button to remove last vertex
+    actionButton("rem_point", "Remove Last Point"),
+    actionButton("rem_all_points", "Clear")
+)
 
 # UI layout
 ui <- bslib::page_navbar(
@@ -130,7 +157,10 @@ bslib::nav_panel(
                   width = 1/2,
                   height = 300,
                   area_card,
-                  card2)
+                  card2,
+                cross_section_card,
+                card3
+              )
                 )
 
 )
@@ -190,14 +220,14 @@ polygon_df <- shiny::reactive({
   }
   #use intersection to find input polygon values within each bounding box
   subpolys <- list()
-  area <- list()
+  # area <- list()
   id = list()
   for (i in 1:length(bboxes))
   {
     intersect <- st_intersection(poly, st_polygon(bboxes[i]))
     subpolys[i] <- st_segmentize(intersect, 1)
     # area[i] <- st_area(intersect)
-    id[i] <-i
+    id[i] <- i
   }
   subpolys <- lapply(subpolys, as.data.frame)
   for (i in 1:length(subpolys))
@@ -212,31 +242,84 @@ polygon_df <- shiny::reactive({
   }
   polygon_df <- do.call(rbind, subpolys)
   polygon_df
+})
 
-  cross_section_df <- polygon_df %>%
+
+#reactive expression to calculate subpolygons
+cross_section_df <- shiny::reactive({
+  req(polygon_df)
+  req(input$chamberHeight)
+  req(input$baffleHeight)
+
+  # subset to only single observation per y unit per group
+  # This retains one chamberWidth value per y allowing for calculation of area of each slice and thus diff cut calculations.
+  cross_section_df <- polygon_df() %>%
     group_by(ID) %>%
     mutate(segmentWidth = x - min(x)) %>%
     distinct(y, .keep_all = T) %>%
-    filter(segmentWidth > 0)
-    # filter(segmentWidth > 0 |((x == min(x)) & (y == max(y) | y == min(y))) | x == max(x))
+    filter(segmentWidth > 0) %>%
+    as.data.frame(.)
 
-  as.data.frame(cross_section_df)
+  # Define the parameters for the ellipse
+  a <- cross_section_df$segmentWidth / 2  # Semi-major axis (half of width)
+  b <- input$chamberHeight - input$baffleHeight # Semi-minor axis (half of height)
+  # Calculate perimeter of ellipse
+  h <- ((a-b)/(a+b))^2
+  p <- pi * (a + b) * (1 + 3 * h / (10 + sqrt((4 - 3 * h))))
+  # Calculate length of chamber roof (half perimeter)
+  cross_section_df$chamberRoofLength <- p / 2
+  # Calculate half ellipse area
+  cross_section_df$chamberUpperArea <- (pi * a * b) / 2
+  # Calculate lower chamber area
+  cross_section_df$chamberLowerArea <- cross_section_df$segmentWidth * input$baffleHeight
+  # Area of each slice (defined by st_segmentize as 1cm)
+  cross_section_df$sliceArea <- cross_section_df$chamberUpperArea + cross_section_df$chamberLowerArea
+
+  cross_section_df
   })
 
+  cross_section_plot_df <- shiny::reactive({
+    req(cross_section_df)
+    req(input$chamberHeight)
+    req(input$baffleHeight)
+
+    cross_section_plot_df <- 
+      cross_section_df() %>%
+      group_by(ID) %>%
+      filter(y == max(y))
+
+    a <- cross_section_plot_df$segmentWidth / 2
+    b <- input$chamberHeight - input$baffleHeight # Semi-minor axis (half of height)
+
+    # Create a sequence of t values from 0 to 2*pi
+    t <- seq(0, 2 * pi, length.out = 100)
+
+    # Parametric equations for the ellipse
+    x_coords <- a * cos(t) + c$a
+    y_coords <- b * sin(t) + input$baffleHeight
+
+    # # Combine the x and y coordinates into a matrix and close the curve
+    # coords <- cbind(x_coords[1:length(t)/2], y_coords[1:length(t)/2])
+    # coords <- rbind(coords, c(0, 0), c(input$chamberWidth, 0), coords[1,])  # Closing the curve
+
+    # # Step 2: Create the sf object for the polygon
+    # ellipse_polygon <- st_sfc(st_polygon(list(coords)))
+
+    # # Step 3: Create an sf data frame
+    # ellipse_sf <- st_sf(geometry = ellipse_polygon)
+
+    # ellipse_sf
+
+
+    # cross_section_plot_df <- 
+    #   cross_section_df() %>%
+    #   group_by(ID) %>%
+    #   filter(y = max(y))
+
+    # cross_section_plot_df()
+    cross_section_plot_df
+  })
   
-# cross_section_x <- shiny::reactive({
-#   req(all_selected_points_x)
-#   width <- max(all_selected_points_x()) * 2
-#   c(0, seq(0,width))
-# })
-  
-# cross_section_y <- shiny::reactive({
-#   req(input$baffleHeight)
-#   # req(input$chamberHeight)
-#   req(cross_section_x)
-#   # c(0,input$baffleHeight + seq(1,length(cross_section_x()),1), 0)
-#   c(0, seq(1,length(cross_section_x())-2) + input$baffleHeight, 0)
-# })
   
   # create design plot
   output$input_plot <- shiny::renderPlot({
@@ -270,7 +353,6 @@ polygon_df <- shiny::reactive({
   })
 
   # clear all selected points on actionButton click
-    # remove row on actionButton click
     shiny::observeEvent(input$rem_all_points, {
       values$user_input <- data.frame(x=double(),
                               y=double()
@@ -294,19 +376,26 @@ polygon_df <- shiny::reactive({
   output$area_plot <- shiny::renderPlot({
     req(polygon_df)
 
-    area_plot <- ggplot() +
-      # lims(x = c(0, input$maxDim/2), y = c(0, input$maxDim)) +
+    ggplot() +
       geom_path(data = polygon_df(), aes(x = x, y = y, group = ID)) +
       theme(legend.position = "bottom")
-
-    area_plot
   })
 
-  # output$cross_section_plot <- plotly::renderPlotly({
-  #   plotly::plot_ly(values$user_input, x = ~x, y = ~y, type = 'scatter', mode = 'markers')
-  # })
+  output$cross_section_plot <- shiny::renderPlot({
+    # Step 4: Plot the ellipse with ggplot2
+    ggplot(data = cross_section_df()) +
+      geom_sf(fill = "lightblue", color = "black") +
+      ggtitle("Chamber Cross-section") +
+      theme_minimal() 
+  })
 
-  output$test <- shiny::renderPrint({polygon_df()})
+  output$cross_section_plot_df <- shiny::renderPrint({
+    cross_section_plot_df()
+  })
+
+  output$test <- shiny::renderPrint({
+    cross_section_df()
+  })
 
 }
 #---------------------------
