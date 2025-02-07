@@ -276,41 +276,39 @@ cross_section_df <- shiny::reactive({
     req(input$chamberHeight)
     req(input$baffleHeight)
 
-    cross_section_plot_data <- 
+
+
+    df <- 
       cross_section_df() %>%
       group_by(ID) %>%
-      filter(y == max(y))
+      filter(y == max(y)) %>%
+      mutate(
+    # Semi-major axis per slice
+    a = segmentWidth / 2
+      ) %>%
+      ungroup()
+    
+      # define constants
+      # Semi-minor axis
+      b <- input$chamberHeight - input$baffleHeight 
+      # Create a sequence of t values from 0 to 2*pi
+      t <- seq(0, 2 * pi, length.out = 100)
+    
+    all_coords <- list()
+    
+    for (i in 1:length(df$ID))
+    {
+      x_start <- df$x[i] - df$segmentWidth[i]
+      # Parametric equations for the ellipse
+      x_coords <- df$a[i] * cos(t) + df$a[i] + x_start
+      y_coords <- b * sin(t) + input$baffleHeight
+      # Combine the x and y coordinates into a matrix and close the curve
+      coords <- cbind(x_coords[1:length(t)/2], y_coords[1:length(t)/2])
+      coords <- rbind(coords, c(x_start, 0), c(df$x[i], 0), coords[1,])
+      all_coords[[i]] <- coords
+    }
 
-    a <- cross_section_plot_data$segmentWidth / 2
-    b <- input$chamberHeight - input$baffleHeight # Semi-minor axis (half of height)
-
-    # Create a sequence of t values from 0 to 2*pi
-    t <- seq(0, 2 * pi, length.out = 100)
-
-    # Parametric equations for the ellipse
-    x_coords <- a * cos(t) + c$a
-    y_coords <- b * sin(t) + input$baffleHeight
-
-    # # Combine the x and y coordinates into a matrix and close the curve
-    # coords <- cbind(x_coords[1:length(t)/2], y_coords[1:length(t)/2])
-    # coords <- rbind(coords, c(0, 0), c(input$chamberWidth, 0), coords[1,])  # Closing the curve
-
-    # # Step 2: Create the sf object for the polygon
-    # ellipse_polygon <- st_sfc(st_polygon(list(coords)))
-
-    # # Step 3: Create an sf data frame
-    # ellipse_sf <- st_sf(geometry = ellipse_polygon)
-
-    # ellipse_sf
-
-
-    # cross_section_plot_data <- 
-    #   cross_section_df() %>%
-    #   group_by(ID) %>%
-    #   filter(y = max(y))
-
-    # cross_section_plot_data()
-    cross_section_plot_data
+    all_coords
   })
   
   
@@ -356,8 +354,6 @@ cross_section_df <- shiny::reactive({
   # render a table of the dataframe
   output$table <- shiny::renderTable({
     values$user_input
-    ## Test
-    # all_selected_points()
   })
   
   output$hover_info <- shiny::renderPrint({
@@ -375,11 +371,25 @@ cross_section_df <- shiny::reactive({
   })
 
   output$cross_section_plot <- shiny::renderPlot({
-    # Step 4: Plot the ellipse with ggplot2
-    ggplot(data = cross_section_df()) +
-      geom_sf(fill = "lightblue", color = "black") +
+
+    data <- cross_section_plot_data()
+
+    plot <- ggplot() +
       ggtitle("Chamber Cross-section") +
       theme_minimal() 
+
+    # add each baffle cross-section
+    for (i in 1:length(data))
+    # for (i in 1:1)
+      {
+      coords <- data[[i]]
+      chamber_polygon <- st_sfc(st_polygon(list(coords)))
+      # Combine them into an sf object
+      cross_sect_sf <- st_sf(geometry = c(chamber_polygon))
+      plot <- plot + geom_sf(data = cross_sect_sf, fill = "lightblue", color = "black")
+    }
+
+    plot
   })
 
   output$cross_section_plot_data <- shiny::renderPrint({
