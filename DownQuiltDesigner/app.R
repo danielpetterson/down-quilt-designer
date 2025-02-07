@@ -1,4 +1,3 @@
-# pacman::p_load(shiny, tidyverse, shinydashboard, lubridate, scales)
 library(shiny)
 library(bslib)
 library(ggplot2)
@@ -94,7 +93,7 @@ card2 <- bslib::card(
 
 card3 <- bslib::card(
   bslib::card_header("Test Output"),
-  verbatimTextOutput("cross_section_plot_df")
+  verbatimTextOutput("cross_section_plot_data")
 )
 
 
@@ -134,7 +133,7 @@ plot_input_card <- bslib::card(
 # UI layout
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
-  theme = bslib::bs_theme(version=5, bootswatch = "sketchy"), # Can specify base_font and code_font
+  theme = bslib::bs_theme(version=5, bootswatch = "sketchy", base_font = "sans-serif"),
   sidebar = bslib::sidebar(
     bslib::accordion(
       design_accordion,
@@ -176,6 +175,7 @@ server = function(input, output){
   values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
                                   y = c(210, 210, 100, 0, 0))
   
+  # add opposing points to user selected points
 all_selected_points_x <- shiny::reactive({
   req(values$user_input)
   c(values$user_input$x, -rev(values$user_input$x))
@@ -220,13 +220,11 @@ polygon_df <- shiny::reactive({
   }
   #use intersection to find input polygon values within each bounding box
   subpolys <- list()
-  # area <- list()
   id = list()
   for (i in 1:length(bboxes))
   {
     intersect <- st_intersection(poly, st_polygon(bboxes[i]))
     subpolys[i] <- st_segmentize(intersect, 1)
-    # area[i] <- st_area(intersect)
     id[i] <- i
   }
   subpolys <- lapply(subpolys, as.data.frame)
@@ -234,11 +232,6 @@ polygon_df <- shiny::reactive({
     {
       names(subpolys[[i]]) <- c('x','y')
       subpolys[[i]]['ID'] <- id[i]
-      # subpolys[[i]]['segmentWidth'] <- subpolys[[i]]['x'] - min(subpolys[[i]]['x'])
-      # subpolys[[i]]['Area'] <- area[i]
-    # Placehold volume calc. Needs to factor in max baffle height
-      # subpolys[[i]]['Volume'] <- as.numeric(area[i]) * as.numeric(input$baffleHeight)
-      
   }
   polygon_df <- do.call(rbind, subpolys)
   polygon_df
@@ -272,23 +265,23 @@ cross_section_df <- shiny::reactive({
   cross_section_df$chamberUpperArea <- (pi * a * b) / 2
   # Calculate lower chamber area
   cross_section_df$chamberLowerArea <- cross_section_df$segmentWidth * input$baffleHeight
-  # Area of each slice (defined by st_segmentize as 1cm)
+  # Area of each slice (defined by st_segmentize as 1cm so area == volume per sice)
   cross_section_df$sliceArea <- cross_section_df$chamberUpperArea + cross_section_df$chamberLowerArea
 
   cross_section_df
   })
 
-  cross_section_plot_df <- shiny::reactive({
+  cross_section_plot_data <- shiny::reactive({
     req(cross_section_df)
     req(input$chamberHeight)
     req(input$baffleHeight)
 
-    cross_section_plot_df <- 
+    cross_section_plot_data <- 
       cross_section_df() %>%
       group_by(ID) %>%
       filter(y == max(y))
 
-    a <- cross_section_plot_df$segmentWidth / 2
+    a <- cross_section_plot_data$segmentWidth / 2
     b <- input$chamberHeight - input$baffleHeight # Semi-minor axis (half of height)
 
     # Create a sequence of t values from 0 to 2*pi
@@ -311,13 +304,13 @@ cross_section_df <- shiny::reactive({
     # ellipse_sf
 
 
-    # cross_section_plot_df <- 
+    # cross_section_plot_data <- 
     #   cross_section_df() %>%
     #   group_by(ID) %>%
     #   filter(y = max(y))
 
-    # cross_section_plot_df()
-    cross_section_plot_df
+    # cross_section_plot_data()
+    cross_section_plot_data
   })
   
   
@@ -389,8 +382,8 @@ cross_section_df <- shiny::reactive({
       theme_minimal() 
   })
 
-  output$cross_section_plot_df <- shiny::renderPrint({
-    cross_section_plot_df()
+  output$cross_section_plot_data <- shiny::renderPrint({
+    cross_section_plot_data()
   })
 
   output$test <- shiny::renderPrint({
