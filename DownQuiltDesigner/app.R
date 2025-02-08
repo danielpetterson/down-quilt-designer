@@ -14,6 +14,10 @@ library(sf)
 # Cross section image
 
 # Info panel with expected weight and total down, baffle material needed
+# Need:
+# area of upper and lower sections
+# area of baffle material
+
 
 # Final upper width is width of chamber roof + baffleLength + seam allowance
 # Final lower is input dims + seam allowance
@@ -237,7 +241,6 @@ polygon_df <- shiny::reactive({
   polygon_df
 })
 
-
 #reactive expression to calculate subpolygons
 cross_section_df <- shiny::reactive({
   req(polygon_df)
@@ -276,8 +279,6 @@ cross_section_df <- shiny::reactive({
     req(input$chamberHeight)
     req(input$baffleHeight)
 
-
-
     df <- 
       cross_section_df() %>%
       group_by(ID) %>%
@@ -309,6 +310,28 @@ cross_section_df <- shiny::reactive({
     }
 
     all_coords
+  })
+
+  material_output <- shiny::reactive({
+    # req(cross_section_df)
+    req(polygon_df)
+    req(input$baffleHeight)
+    req(input$seamAllowance)
+
+    baffle_mat_height <- input$baffleHeight + (2 * input$seamAllowance)
+    baffle_mat_length_by_chamber <- polygon_df() %>%
+      group_by(ID) %>%
+      filter(x == min(x)) %>%
+      summarize(length = max(y) - min(y)) %>%
+      ungroup()
+    baffle_mat_length <- (sum(baffle_mat_length_by_chamber$length) * 2) - baffle_mat_length_by_chamber$length[1]
+
+    baffle_mat_area <- baffle_mat_height * baffle_mat_length
+    baffle_mat_weight <- baffle_mat_area * input$baffleWeight / 1000
+
+    baffle_mat_height
+    baffle_mat_area
+    baffle_mat_weight
   })
   
   
@@ -397,7 +420,7 @@ cross_section_df <- shiny::reactive({
   })
 
   output$test <- shiny::renderPrint({
-    cross_section_df()
+    material_output()
   })
 
 }
