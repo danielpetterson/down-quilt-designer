@@ -11,18 +11,15 @@ library(sf)
 # - Volume
 # - Grams of down needed
 
-# Cross section image
-
 # Info panel with expected weight and total down, baffle material needed
-# Need:
-# area of outer sections
+##TODO: 
+#Verify FP metric conversion
+#Display measurements in table
 
-
-# Final upper width is width of chamber roof + baffleLength + seam allowance
-# Final lower is input dims + seam allowance
 
 # Troubleshoot:
 # Chamber width can't drop below 5 or 'names' attribute [2] must be the same length as the vector [1]
+# volume calulation is off by 1% at baseline
 
 options(digits=2)
 
@@ -321,25 +318,10 @@ cross_section_df <- shiny::reactive({
     req(polygon_df)
     req(input$baffleHeight)
     req(input$seamAllowance)
+    req(input$overstuff)
     req(all_selected_points_x)
     req(all_selected_points_y)
     req(cross_section_df)
-
-    # Baffle Material
-    baffle_mat_height <- input$baffleHeight + (2 * input$seamAllowance)
-    baffle_mat_length_by_chamber <- polygon_df() %>%
-      group_by(ID) %>%
-      filter(x == min(x)) %>%
-      summarize(length = max(y) - min(y)) %>%
-      ungroup()
-    baffle_mat_length <- (sum(baffle_mat_length_by_chamber$length) * 2) - baffle_mat_length_by_chamber$length[1]
-    baffle_mat_area <- baffle_mat_height * baffle_mat_length
-    baffle_mat_weight <- baffle_mat_area / 10000 * input$baffleWeight 
-
-    # Baffle Material Area (cm^2)
-    baffle_mat_area
-    # Baffle Material Weight (g)
-    baffle_mat_weight
 
     # Function to add seam allowance to an sf object
     add_seam_allowance <- function(sf_object, seam_allowance = input$seamAllowance) {
@@ -351,22 +333,69 @@ cross_section_df <- shiny::reactive({
       return(sf_object_with_seam)
     }
 
-    # Inner Layer Area
-    poly <- sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y())))
-    inner_mat_area <- st_area(add_seam_allowance(poly))
-    # Inner Layer Weight
-    inner_mat_weight <- inner_mat_area / 10000 * input$innerWeight
-    # Outer Layer Area
+    # ---Baffle Material---
+    baffle_mat_height <- input$baffleHeight + (2 * input$seamAllowance)
+    baffle_mat_length_by_chamber <- polygon_df() %>%
+      group_by(ID) %>%
+      filter(x == min(x)) %>%
+      summarize(length = max(y) - min(y)) %>%
+      ungroup()
+    baffle_mat_length <- (sum(baffle_mat_length_by_chamber$length) * 2) - baffle_mat_length_by_chamber$length[1]
+    baffle_mat_area <- baffle_mat_height * baffle_mat_length
+    baffle_mat_weight <- baffle_mat_area / 10000 * input$baffleWeight 
+    # Area (cm^2)
+    baffle_mat_area
+    # Weight (g)
+    baffle_mat_weight
 
-    # Outer Layer Weight
+    # ---Inner Layer---
+    inner_poly <- sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y())))
+    # Area
+    inner_mat_area <- st_area(add_seam_allowance(inner_poly))
+    # Weight
+    inner_mat_weight <- inner_mat_area / 10000 * input$innerWeight
+
+    # ---Outer Layer---
+    right_points <- cross_section_df() %>%
+      group_by(y) %>%
+      summarize(x = sum(chamberRoofLength) + input$baffleHeight)
+    outer_points <- data.frame(
+      x = c(right_points$x, -rev(right_points$x)),
+      y = c(right_points$y, rev(right_points$y))
+  )
+    # close polygon
+    outer_points <- rbind(outer_points, outer_points[1,])
+    outer_poly <- sf::st_polygon(list(cbind(outer_points$x, outer_points$y)))
+
+    # Area
+    outer_mat_area <- st_area(add_seam_allowance(outer_poly))
+    # Weight
+    outer_mat_weight <- outer_mat_area / 10000 * input$outerWeight
+
+    # ---Volume---
+    # exclude final slice from cumulative total
+    vol_data <- cross_section_df() %>%
+      filter(y > 0)
+    volume <- sum(vol_data$sliceArea) * 2
+    # down volume per gram CUIN/oz to CUCM/g
+    FP_metric <- (input$FP * 16.387064) / 28.34952
+    # number of grams needed
+    grams_down <- volume/FP_metric
+    # adjusted for over/underfill
+    grams_down_adj <- grams_down * (1 + (input$overstuff/100))
 
     # baffle_mat_area
     # baffle_mat_weight
     # inner_mat_area
     # inner_mat_weight
-    cross_section_df() %>%
-      group_by(y) %>%
-      summarize(width = sum(chamberRoofLength))
+    # right_points
+    # outer_points
+    # outer_mat_area
+    # outer_mat_weight
+    # volume
+    FP_metric
+    grams_down
+    grams_down_adj
   })
   
   
