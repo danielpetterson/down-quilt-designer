@@ -15,12 +15,14 @@ library(sf)
 
 # Info panel with expected weight and total down, baffle material needed
 # Need:
-# area of upper and lower sections
-# area of baffle material
+# area of outer sections
 
 
 # Final upper width is width of chamber roof + baffleLength + seam allowance
 # Final lower is input dims + seam allowance
+
+# Troubleshoot:
+# Chamber width can't drop below 5 or 'names' attribute [2] must be the same length as the vector [1]
 
 options(digits=2)
 
@@ -176,8 +178,11 @@ server = function(input, output){
   
   # set up reactive dataframe with example data
   values <- shiny::reactiveValues()
-  values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
-                                  y = c(210, 210, 100, 0, 0))
+  # values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
+  #                                 y = c(210, 210, 100, 0, 0))
+  
+  values$user_input <- data.frame(x = c(0, 50, 50, 0),
+                                  y = c(100, 100, 0, 0))
   
   # add opposing points to user selected points
 all_selected_points_x <- shiny::reactive({
@@ -313,11 +318,14 @@ cross_section_df <- shiny::reactive({
   })
 
   material_output <- shiny::reactive({
-    # req(cross_section_df)
     req(polygon_df)
     req(input$baffleHeight)
     req(input$seamAllowance)
+    req(all_selected_points_x)
+    req(all_selected_points_y)
+    req(cross_section_df)
 
+    # Baffle Material
     baffle_mat_height <- input$baffleHeight + (2 * input$seamAllowance)
     baffle_mat_length_by_chamber <- polygon_df() %>%
       group_by(ID) %>%
@@ -325,13 +333,40 @@ cross_section_df <- shiny::reactive({
       summarize(length = max(y) - min(y)) %>%
       ungroup()
     baffle_mat_length <- (sum(baffle_mat_length_by_chamber$length) * 2) - baffle_mat_length_by_chamber$length[1]
-
     baffle_mat_area <- baffle_mat_height * baffle_mat_length
-    baffle_mat_weight <- baffle_mat_area * input$baffleWeight / 1000
+    baffle_mat_weight <- baffle_mat_area / 10000 * input$baffleWeight 
 
-    baffle_mat_height
+    # Baffle Material Area (cm^2)
     baffle_mat_area
+    # Baffle Material Weight (g)
     baffle_mat_weight
+
+    # Function to add seam allowance to an sf object
+    add_seam_allowance <- function(sf_object, seam_allowance = input$seamAllowance) {
+      # Add a buffer (seam allowance) to the sf object
+      # seam_allowance is in the same unit as the CRS of the sf object
+      sf_object_with_seam <- st_buffer(sf_object, dist = seam_allowance)
+      
+      # Return the new sf object with seam allowance
+      return(sf_object_with_seam)
+    }
+
+    # Inner Layer Area
+    poly <- sf::st_polygon(list(cbind(all_selected_points_x(), all_selected_points_y())))
+    inner_mat_area <- st_area(add_seam_allowance(poly))
+    # Inner Layer Weight
+    inner_mat_weight <- inner_mat_area / 10000 * input$innerWeight
+    # Outer Layer Area
+
+    # Outer Layer Weight
+
+    # baffle_mat_area
+    # baffle_mat_weight
+    # inner_mat_area
+    # inner_mat_weight
+    cross_section_df() %>%
+      group_by(y) %>%
+      summarize(width = sum(chamberRoofLength))
   })
   
   
