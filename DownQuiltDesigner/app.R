@@ -11,15 +11,35 @@ library(sf)
 # - Volume
 # - Grams of down needed
 
+# navset_card_tab(
+#   height = 450,
+#   full_screen = TRUE,
+#   title = "",
+#   nav_panel(
+#     "Inner",
+#     card_title("Inner Layer"),
+#     inner_plot
+#   ),
+#   nav_panel(
+#     "Outer",
+#     card_title("Outer Layer"),
+#     outer_plot
+#   ),
+#   nav_panel(
+#     shiny::icon("circle-info"),
+#     markdown("Info placeholder)")
+#   )
+# )
+
 # Info panel with expected weight and total down, baffle material needed
 ##TODO: 
 #Verify FP metric conversion
 #Display measurements in table
+# Use value boxes
 
 
 # Troubleshoot:
-# Chamber width can't drop below 5 or 'names' attribute [2] must be the same length as the vector [1]
-# volume calulation is off by 1% at baseline
+# max width can't evenly divisible by chamber_width or 'names' attribute [2] must be the same length as the vector [1]
 
 options(digits=2)
 
@@ -392,10 +412,10 @@ cross_section_df <- shiny::reactive({
     # outer_points
     # outer_mat_area
     # outer_mat_weight
-    # volume
-    FP_metric
-    grams_down
-    grams_down_adj
+    volume
+    # FP_metric
+    # grams_down
+    # grams_down_adj
   })
   
   
