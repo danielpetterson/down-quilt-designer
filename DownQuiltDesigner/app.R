@@ -197,11 +197,11 @@ server = function(input, output){
   
   # set up reactive dataframe with example data
   values <- shiny::reactiveValues()
-  values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
-                                  y = c(210, 210, 100, 0, 0))
+  # values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
+  #                                 y = c(210, 210, 100, 0, 0))
   
-  # values$user_input <- data.frame(x = c(0, 50, 50, 0),
-  #                                 y = c(100, 100, 0, 0))
+  values$user_input <- data.frame(x = c(0, 50, 50, 0),
+                                  y = c(100, 100, 0, 0))
   
   # add opposing points to user selected points
 all_selected_points_x <- shiny::reactive({
@@ -251,18 +251,26 @@ polygon_df <- shiny::reactive({
     if (orientation == 'vertical'){
       chamberWidth <- input$verticalChamberWidth
         #create vertical lines spaced verticalChamberWidth apart
+      if (bbox["xmax"]%%chamberWidth == 0) {
+        x_seq <- seq(0, bbox["xmax"], by = chamberWidth)
+      } else {
       x_seq <- seq(0, (bbox["xmax"] + chamberWidth), by = chamberWidth)
+      }
       lines <- lapply(x_seq, function(x) {
         st_linestring(rbind(c(x, bbox["ymin"]), c(x, bbox["ymax"])))
       })
-    } else if (orientation == 'horizontal') {
+      } else if (orientation == 'horizontal') {
       chamberWidth <- input$horizontalChamberWidth
       #create horizontal lines spaced horizontalChamberWidth apart
+      if (bbox["ymax"]%%chamberWidth == 0) {
+        y_seq <- seq(bbox["ymax"], 0, by = -chamberWidth)
+      } else {
     y_seq <- seq(bbox["ymax"], (0 - chamberWidth), by = -chamberWidth)
+    }
     lines <- lapply(y_seq, function(y) {
       st_linestring(rbind(c(bbox["xmin"], y), c(bbox["xmax"], y)))
     })
-    }
+      }
 
 
     #combine lines into a multi-line geometry
