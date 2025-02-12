@@ -1,5 +1,6 @@
 library(shiny)
 library(bslib)
+library(bsicons)
 library(ggplot2)
 library(dplyr)
 library(sf)
@@ -155,6 +156,43 @@ plot_input_card <- bslib::card(
     actionButton("rem_all_points", "Clear")
 )
 
+specs <- list()
+
+# specs_name <- c(
+#   "baffle_mat_area",
+#   "baffle_mat_weight",
+#   "inner_mat_area",
+#   "inner_mat_weight",
+#   "right_points",
+#   "outer_points",
+#   "outer_mat_area",
+#   "outer_mat_weight",
+#   "volume",
+#   "FP_metric",
+#   "grams_down",
+#   "grams_down_adj"
+# )
+
+specs_name <- c(
+  "Baffle Material Area",
+  "Baffle Material Weight",
+  "Inner Layer Area",
+  "Inner Layer Weight",
+  "Outer Layer Area",
+  "Outer Layer Weight",
+  "Volume",
+  "Grams of Down",
+  "Estimated Weight"
+)
+
+for (i in 1:length(specs_name)) {
+  specs[[i]] <- value_box(
+    title = specs_name[i],
+    value = "123",
+    theme = "purple",
+  )
+}
+
 # UI layout
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
@@ -166,7 +204,7 @@ ui <- bslib::page_navbar(
   )
 ),
 bslib::nav_panel(
-  title = "Dimensions",
+  title = "Input Dimensions",
   bslib::layout_column_wrap(
     width = NULL,
     height = NULL,
@@ -176,7 +214,7 @@ bslib::nav_panel(
     selected_points_card)
   ),
 bslib::nav_panel(
-  title = "Output",
+  title = "Output Dimensions",
   bslib::layout_column_wrap(
                   width = 1/2,
                   height = 300,
@@ -184,6 +222,13 @@ bslib::nav_panel(
                   card2,
                 cross_section_card,
                 card3
+              ),
+                ),
+bslib::nav_panel(
+  title = "Specifications",
+    layout_column_wrap(
+      width = "250px",
+      !!!specs
               )
                 )
 
@@ -489,7 +534,7 @@ cross_section_df <- shiny::reactive({
   #   # grams_down_adj
   # })
   
-  ## --- Page: Dimensions ---
+  ## --- Page: Input Dimensions ---
   # create design plot
   output$input_plot <- shiny::renderPlot({
     ggplot(values$user_input, aes(x = x, y = y)) +
@@ -542,7 +587,7 @@ cross_section_df <- shiny::reactive({
 
   # -------------------------
 
-  ## --- Page: Output ---
+  ## --- Page: Output Dimensions ---
   output$area_plot <- shiny::renderPlot({
     req(data_list)
 
