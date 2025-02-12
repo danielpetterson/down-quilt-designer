@@ -36,10 +36,10 @@ library(sf)
 #Verify FP metric conversion
 #Display measurements in table
 # Use value boxes
+# list of dataframes includes:
+# init_df which is main points of inner
+# segmentised_df which is one point for every cm, only retaining right/bottom most observations with segment length
 
-
-# Troubleshoot:
-# max width can't evenly divisible by chamber_width or 'names' attribute [2] must be the same length as the vector [1]
 
 options(digits=2)
 
@@ -197,11 +197,11 @@ server = function(input, output){
   
   # set up reactive dataframe with example data
   values <- shiny::reactiveValues()
-  # values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
-  #                                 y = c(210, 210, 100, 0, 0))
+  values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
+                                  y = c(210, 210, 100, 0, 0))
   
-  values$user_input <- data.frame(x = c(0, 50, 50, 0),
-                                  y = c(100, 100, 0, 0))
+  # values$user_input <- data.frame(x = c(0, 50, 50, 0),
+  #                                 y = c(100, 100, 0, 0))
   
   # add opposing points to user selected points
 all_selected_points_x <- shiny::reactive({
@@ -215,12 +215,14 @@ all_selected_points_y <- shiny::reactive({
 })
   
 #reactive expression to calculate subpolygons
-polygon_df <- shiny::reactive({
+data_list <- shiny::reactive({
   req(all_selected_points_x)
   req(all_selected_points_y)
   req(input$verticalChamberWidth)
   req(input$horizontalChamberWidth)
   req(input$baffleSplitHeight)
+
+  
 
   points <- data.frame(
     x = all_selected_points_x(),
@@ -231,17 +233,17 @@ polygon_df <- shiny::reactive({
   poly <- st_sfc(sf::st_polygon(list(cbind(points$x, points$y))))
 
   split_height <- input$baffleSplitHeight
-  upper_bbox <- st_sfc(st_polygon(list(cbind(
+  vert_bbox <- st_sfc(st_polygon(list(cbind(
     c(0, max(points$x), max(points$x), 0, 0), 
     c(max(points$y), max(points$y), split_height, split_height, max(points$y))))))
   
-  lower_bbox <- st_sfc(st_polygon(list(cbind(
+  hor_bbox <- st_sfc(st_polygon(list(cbind(
     c(0, max(points$x), max(points$x), 0, 0), 
     c(min(points$y), min(points$y), split_height, split_height, min(points$y))))))
 
-  #define upper and lower polygons
-  upper <- st_crop(st_segmentize(poly, 0.1), upper_bbox)
-  lower <- st_crop(st_segmentize(poly, 0.1), lower_bbox)
+  #define vertical and horizontal chamber polygons
+  vert <- st_crop(st_segmentize(poly, 0.1), vert_bbox)
+  hor <- st_crop(st_segmentize(poly, 0.1), hor_bbox)
 
   define_chambers <- function(polygon, orientation) {
 
@@ -304,47 +306,66 @@ polygon_df <- shiny::reactive({
       subpolys[[i]] <- as.data.frame(st_coordinates(subpolys[[i]]))
       subpolys[[i]]['ID'] <- id[i]
     }
-    polygon_df <- do.call(rbind, subpolys)
-    polygon_df$orientation <- orientation
-    polygon_df
-
+    do.call(rbind, subpolys) %>%
+      select(X, Y, ID) %>%
+      mutate(orientation = orientation)
   }
+  init_df <- rbind(define_chambers(vert, 'vertical'), define_chambers(hor, 'horizontal'))
+  init_df
 
-  rbind(define_chambers(upper, 'vertical'), define_chambers(lower, 'horizontal'))
+  out <- list(init_df, init_df)
 })
 
-# #reactive expression to calculate subpolygons
-# cross_section_df <- shiny::reactive({
-#   req(polygon_df)
-#   req(input$verticalChamberHeight)
-#   req(input$baffleHeight)
+#reactive expression to calculate subpolygons
+cross_section_df <- shiny::reactive({
+  req(data_list)
+  req(input$verticalChamberHeight)
+  req(input$horizontalChamberHeight)
+  req(input$baffleHeight)
 
-#   # subset to only single observation per y unit per group
-#   # This retains one verticalChamberWidth value per y allowing for calculation of area of each slice and thus diff cut calculations.
-#   cross_section_df <- polygon_df() %>%
-#     group_by(ID) %>%
-#     mutate(segmentWidth = x - min(x)) %>%
-#     distinct(y, .keep_all = T) %>%
-#     filter(segmentWidth > 0) %>%
-#     as.data.frame(.)
+  init_df <- data_list()[[1]]
 
-#   # Define the parameters for the ellipse
-#   a <- cross_section_df$segmentWidth / 2  # Semi-major axis (half of width)
-#   b <- input$verticalChamberHeight - input$baffleHeight # Semi-minor axis (half of height)
-#   # Calculate perimeter of ellipse
-#   h <- ((a-b)/(a+b))^2
-#   p <- pi * (a + b) * (1 + 3 * h / (10 + sqrt((4 - 3 * h))))
-#   # Calculate length of chamber roof (half perimeter)
-#   cross_section_df$chamberRoofLength <- p / 2
-#   # Calculate half ellipse area
-#   cross_section_df$chamberUpperArea <- (pi * a * b) / 2
-#   # Calculate lower chamber area
-#   cross_section_df$chamberLowerArea <- cross_section_df$segmentWidth * input$baffleHeight
-#   # Area of each slice (defined by st_segmentize as 1cm so area == volume per sice)
-#   cross_section_df$sliceArea <- cross_section_df$chamberUpperArea + cross_section_df$chamberLowerArea
+  # This retains one verticalChamberWidth value per y allowing for calculation of area of each slice and thus diff cut calculations.
+  vert_df <- init_df %>%
+    filter(orientation == 'vertical') %>%
+    #group byb chamber ID
+    group_by(ID) %>%
+    #segmentwidth is width of inner layer in a given chamber at a given y value (1cm increments)
+    mutate(segmentWidth = X - min(X)) %>%
+    #subset to only single observation per y unit per group
+    distinct(Y, .keep_all = T) %>%
+    #keep only rightmost observations since measuring from left to right
+    filter(segmentWidth > 0)
 
-#   cross_section_df
-#   })
+  vert_df
+
+  hor_df <- init_df %>%
+    filter(orientation == 'horizontal') %>%
+    group_by(ID) %>%
+    #width is instead the length of horizontal segment
+    mutate(segmentWidth = Y - min(Y)) %>%
+    distinct(X, .keep_all = T) %>%
+    filter(segmentWidth > 0)
+
+  hor_df
+
+  # # Define the parameters for the ellipse
+  # a <- cross_section_df$segmentWidth / 2  # Semi-major axis (half of width)
+  # b <- input$verticalChamberHeight - input$baffleHeight # Semi-minor axis (half of height)
+  # # Calculate perimeter of ellipse
+  # h <- ((a-b)/(a+b))^2
+  # p <- pi * (a + b) * (1 + 3 * h / (10 + sqrt((4 - 3 * h))))
+  # # Calculate length of chamber roof (half perimeter)
+  # cross_section_df$chamberRoofLength <- p / 2
+  # # Calculate half ellipse area
+  # cross_section_df$chamberUpperArea <- (pi * a * b) / 2
+  # # Calculate lower chamber area
+  # cross_section_df$chamberLowerArea <- cross_section_df$segmentWidth * input$baffleHeight
+  # # Area of each slice (defined by st_segmentize as 1cm so area == volume per sice)
+  # cross_section_df$sliceArea <- cross_section_df$chamberUpperArea + cross_section_df$chamberLowerArea
+
+  # data_list()
+  })
 
   # cross_section_plot_data <- shiny::reactive({
   #   req(cross_section_df)
@@ -385,7 +406,7 @@ polygon_df <- shiny::reactive({
   # })
 
   # material_output <- shiny::reactive({
-  #   req(polygon_df)
+  #   req(data_list)
   #   req(input$baffleHeight)
   #   req(input$seamAllowance)
   #   req(input$overstuff)
@@ -405,7 +426,7 @@ polygon_df <- shiny::reactive({
 
   #   # ---Baffle Material---
   #   baffle_mat_height <- input$baffleHeight + (2 * input$seamAllowance)
-  #   baffle_mat_length_by_chamber <- polygon_df() %>%
+  #   baffle_mat_length_by_chamber <- data_list() %>%
   #     group_by(ID) %>%
   #     filter(x == min(x)) %>%
   #     summarize(length = max(y) - min(y)) %>%
@@ -523,18 +544,18 @@ polygon_df <- shiny::reactive({
 
   ## --- Page: Output ---
   output$area_plot <- shiny::renderPlot({
-    req(polygon_df)
+    req(data_list)
 
-    upper <- polygon_df() %>%
+    vert <- data_list()[[1]] %>%
       filter(orientation == 'vertical')
 
-    lower <- polygon_df() %>%
+    hor <- data_list()[[1]] %>%
       filter(orientation == 'horizontal')
 
 
     ggplot() +
-      geom_path(data = upper, aes(x = X, y = Y, group = ID)) +
-      geom_path(data = lower, aes(x = X, y = Y, group = ID)) +
+      geom_path(data = vert, aes(x = X, y = Y, group = ID)) +
+      geom_path(data = hor, aes(x = X, y = Y, group = ID)) +
       theme(legend.position = "bottom")
   })
 
@@ -568,7 +589,7 @@ polygon_df <- shiny::reactive({
   #   material_output()
   # })
   output$test <- shiny::renderPrint({
-    polygon_df()
+    cross_section_df()
   })
 
 
