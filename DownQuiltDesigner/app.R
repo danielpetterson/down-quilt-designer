@@ -12,34 +12,19 @@ library(sf)
 # - Volume
 # - Grams of down needed
 
-# navset_card_tab(
-#   height = 450,
-#   full_screen = TRUE,
-#   title = "",
-#   nav_panel(
-#     "Inner",
-#     card_title("Inner Layer"),
-#     inner_plot
-#   ),
-#   nav_panel(
-#     "Outer",
-#     card_title("Outer Layer"),
-#     outer_plot
-#   ),
-#   nav_panel(
-#     shiny::icon("circle-info"),
-#     markdown("Info placeholder)")
-#   )
-# )
-
 # Info panel with expected weight and total down, baffle material needed
 ##TODO: 
 #Verify FP metric conversion
 #Display measurements in table
-# Use value boxes
+
 # list of dataframes includes:
-# init_df which is main points of inner
-# segmentised_df which is one point for every cm, only retaining right/bottom most observations with segment length
+# 1 segmentized_poly which is the dataframe containing all inner layer polygons
+# 2 outer_poly contains all outer layer polygons
+# 3 cross section plot data
+
+# Issues:
+# 100% vertical baffles. Same issue not present for 100% horizontal.
+# Error: not implemented for objects of class sfc_GEOMETRY
 
 
 options(digits=2)
@@ -59,7 +44,7 @@ design_accordion <- bslib::accordion_panel(
   numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
   numericInput('verticalChamberHeight','Max Vertical Chamber Height (cm)', 2.5, min = 0),
   numericInput('verticalChamberWidth','Vertical Chamber Width (cm)', 15, min = 0),
-  numericInput('horizontalChamberHeight','Max Horizontal Chamber Height (cm)', 2, min = 0),
+  numericInput('horizontalChamberHeight','Max Horizontal Chamber Height (cm)', 2.5, min = 0),
   numericInput('horizontalChamberWidth','Horizontal Chamber Width (cm)', 11, min = 0)
 )
 
@@ -122,15 +107,16 @@ card3 <- bslib::card(
   verbatimTextOutput("cross_section_plot_data")
 )
 
-
-cross_section_card <- bslib::card(
-  bslib::card_header("Cross Sectional View"),
-  plotOutput("cross_section_plot")
+inner_card <- bslib::card(
+  plotOutput("inner_plot")
 )
 
-area_card <- bslib::card(
-  bslib::card_header("Aerial View"),
-  plotOutput("area_plot")
+outer_vert_card <- bslib::card(
+  plotOutput("outer_vert_plot")
+)
+
+outer_hor_card <- bslib::card(
+  plotOutput("outer_hor_plot")
 )
 
 plot_input_card <- bslib::card(
@@ -186,7 +172,7 @@ specs_name <- c(
 )
 
 for (i in 1:length(specs_name)) {
-  specs[[i]] <- value_box(
+  specs[[i]] <- bslib::value_box(
     title = specs_name[i],
     value = "123",
     theme = "purple",
@@ -196,7 +182,7 @@ for (i in 1:length(specs_name)) {
 # UI layout
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
-  theme = bslib::bs_theme(version=5, bootswatch = "sketchy", base_font = "sans-serif"),
+  theme = bslib::bs_theme(version = 5, bootswatch = "sketchy", base_font = "sans-serif"),
   sidebar = bslib::sidebar(
     bslib::accordion(
       design_accordion,
@@ -215,14 +201,34 @@ bslib::nav_panel(
   ),
 bslib::nav_panel(
   title = "Output Dimensions",
-  bslib::layout_column_wrap(
-                  width = 1/2,
-                  height = 300,
-                  area_card,
-                  card2,
-                cross_section_card,
-                card3
-              ),
+  navset_card_tab(
+  # height = 1800,
+  full_screen = TRUE,
+  # title = "",
+    nav_panel(
+      "Inner Layer",
+      # card_title("Inner Layer"),
+      inner_card,
+                # card3
+      # inner_plot
+    ),
+    nav_panel(
+      "Outer Vertical",
+
+      # card_title("Outer Vertical Layer"),
+      outer_vert_card
+    ),
+    nav_panel(
+      "Outer Horizontal",
+      # card_title("Outer Horizontal Layer"),
+      outer_hor_card
+    ),
+    nav_panel(
+      shiny::icon("circle-info"),
+      markdown("Info placeholder"),
+            card2,
+    )
+),
                 ),
 bslib::nav_panel(
   title = "Specifications",
@@ -342,7 +348,7 @@ data_list <- shiny::reactive({
     id = list()
     for (i in 1:length(bboxes))
     {
-      subpolys[i] <- st_intersection(poly, st_polygon(bboxes[i]))
+      subpolys[i] <- st_segmentize(st_intersection(poly, st_polygon(bboxes[i])), 1)
       id[i] <- i
     }
     #combine to dataframe with identifying info
@@ -351,104 +357,161 @@ data_list <- shiny::reactive({
       subpolys[[i]] <- as.data.frame(st_coordinates(subpolys[[i]]))
       subpolys[[i]]['ID'] <- id[i]
     }
-    do.call(rbind, subpolys) %>%
+    segmentized_poly <- do.call(rbind, subpolys) %>%
       select(X, Y, ID) %>%
       mutate(orientation = orientation)
-  }
-  init_df <- rbind(define_chambers(vert, 'vertical'), define_chambers(hor, 'horizontal'))
-  init_df
 
-  out <- list(init_df, init_df)
+    if (orientation == 'vertical'){
+      outer_poly <- segmentized_poly %>%
+        #group byb chamber ID
+        group_by(ID) %>%
+        #segmentwidth is width of inner layer in a given chamber at a given y value (1cm increments)
+        mutate(segmentWidth = X - min(X)) %>%
+        #subset to only single observation per y unit per group
+        distinct(Y, .keep_all = T) %>%
+        #keep only rightmost observations since measuring from left to right
+        filter(segmentWidth > 0)
+    } else if (orientation == 'horizontal'){
+      outer_poly <- segmentized_poly %>%
+        group_by(ID) %>%
+        #width is instead the length of horizontal segment
+        mutate(segmentWidth = max(Y) - Y) %>%
+        distinct(X, .keep_all = T) %>%
+        filter(segmentWidth > 0)
+    }
+
+    # Define the parameters for the ellipse
+    a <- outer_poly$segmentWidth / 2  # Semi-major axis (half of width)
+    if (orientation == "vertical"){
+        b <- input$verticalChamberHeight - input$baffleHeight # Semi-minor axis (half of height)
+    } else if (orientation == "horizontal") {
+        b <- input$horizontalChamberHeight - input$baffleHeight # Semi-minor axis (half of height)
+      }
+    # Calculate perimeter of ellipse
+    h <- ((a-b)/(a+b))^2
+    p <- pi * (a + b) * (1 + 3 * h / (10 + sqrt((4 - 3 * h))))
+
+    # Calculate length of chamber roof (half perimeter)
+    outer_poly$chamberRoofLength <- p / 2
+    # Calculate half ellipse area
+    outer_poly$chamberUpperArea <- (pi * a * b) / 2
+    # Calculate lower chamber area
+    outer_poly$chamberLowerArea <- outer_poly$segmentWidth * input$baffleHeight
+    # Area of each slice (defined by st_segmentize as 1cm so area == volume per slice)
+    outer_poly$sliceArea <- outer_poly$chamberUpperArea + outer_poly$chamberLowerArea
+
+    if (orientation == "vertical"){
+      df <- outer_poly %>%
+        group_by(ID) %>%
+        filter(Y == max(Y)) %>%
+        mutate(
+      # Semi-major axis per slice
+      a = segmentWidth / 2
+        ) %>%
+        ungroup()
+  } else if (orientation == "horizontal") {
+    df <- outer_poly %>%
+      group_by(ID) %>%
+      filter(X == min(X)) %>%
+      mutate(
+    # Semi-major axis per slice
+    a = segmentWidth / 2
+      ) %>%
+      ungroup()
+  }
+
+      # Create a sequence of t values from 0 to 2*pi
+      t <- seq(0, 2 * pi, length.out = 100)
+    
+    
+    
+    if (orientation == 'vertical'){
+      cross_section_plot_data <- list()
+    for (i in 1:length(df$ID))
+    {
+      #positioning within plot
+      y_translate <- max(segmentized_poly$Y) + (max(segmentized_poly$Y) / 20)
+      
+      x_start <- df$X[i] - df$segmentWidth[i]
+      # Parametric equations for the ellipse
+      x_coords <- df$a[i] * cos(t) + df$a[i] + x_start
+      y_coords <- b * sin(t) + input$baffleHeight
+      y_coords <- y_coords + y_translate
+      # Combine the x and y coordinates into a matrix and close the curve
+      coords <- cbind(x_coords[1:length(t)/2], y_coords[1:length(t)/2])
+      coords <- rbind(coords, c(x_start, y_translate), c(df$X[i], y_translate), coords[1,])
+
+      cross_section_plot_data[[i]] <- coords
+    }
+  } else if (orientation == 'horizontal'){
+    cross_section_plot_data <- list()
+    for (i in 1:length(df$ID))
+      {
+        #positioning within plot
+        x_translate <- max(segmentized_poly$X) + (max(segmentized_poly$X) / 20)
+        
+        y_start <- df$Y[i] + df$segmentWidth[i]
+        # Parametric equations for the ellipse
+        y_coords <- y_start - (df$a[i] * cos(t) + df$a[i])
+        x_coords <- b * sin(t) + input$baffleHeight
+        x_coords <- x_coords + x_translate
+        # Combine the x and y coordinates into a matrix and close the curve
+        coords <- cbind(x_coords[1:length(t)/2], y_coords[1:length(t)/2])
+        coords <- rbind(coords, c(x_translate, y_start), c(x_translate, df$Y[i]), coords[1,])
+  
+        cross_section_plot_data[[i]] <- coords
+    }
+
+  }
+
+    # Outer layer dimensions
+    if (orientation == 'vertical'){
+      outer_poly_update <- list()
+      # Keep only the lowest value of X for each level of Y within each group
+      left_points <- segmentized_poly %>%
+        group_by(ID) %>%
+        filter(X == min(X)) %>%
+        ungroup()
+      right_point_data <- outer_poly %>% select("X", "Y", "ID", "orientation", "chamberRoofLength")
+      # left_points <- left_join(left_points, , by = c("ID", "Y", "orientation"))
+      # left_right$start <- 0
+      # for (i in 1:max(outer_poly$ID)){
+        right_points <- right_point_data %>%
+          group_by(Y) %>%
+          mutate(X = cumsum(chamberRoofLength)) %>%
+          ungroup() %>%
+          filter(ID == 5)#%>%
+          # select("X", "Y", "ID", "orientation")
+      # outer_poly_update <- rbind(outer_poly_update, left_points)
+        outer_poly_update <- right_points
+      # }
+    }
+
+    #} else if (orientation == 'horizontal'){
+
+  
+
+
+    return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_poly_update))
+  }
+
+  #TODO: Combine all elements of the lists correctly
+  # Cross-section plot data may need to be imported separately 
+  vert_list <- define_chambers(vert, 'vertical')
+  # hor_list <- define_chambers(hor, 'horizontal')
+
+  # segmentized_poly <- rbind(vert_list[[1]],hor_list[[1]])
+  # outer_poly <- rbind(vert_list[[2]],hor_list[[2]])
+
+  vert_list
+  # hor_list
+
+  # init_df <- rbind(define_chambers(vert, 'vertical'), define_chambers(hor, 'horizontal'))
+  # init_df
+
+  # out <- list(init_df, init_df)
 })
 
-#reactive expression to calculate subpolygons
-cross_section_df <- shiny::reactive({
-  req(data_list)
-  req(input$verticalChamberHeight)
-  req(input$horizontalChamberHeight)
-  req(input$baffleHeight)
-
-  init_df <- data_list()[[1]]
-
-  # This retains one verticalChamberWidth value per y allowing for calculation of area of each slice and thus diff cut calculations.
-  vert_df <- init_df %>%
-    filter(orientation == 'vertical') %>%
-    #group byb chamber ID
-    group_by(ID) %>%
-    #segmentwidth is width of inner layer in a given chamber at a given y value (1cm increments)
-    mutate(segmentWidth = X - min(X)) %>%
-    #subset to only single observation per y unit per group
-    distinct(Y, .keep_all = T) %>%
-    #keep only rightmost observations since measuring from left to right
-    filter(segmentWidth > 0)
-
-  vert_df
-
-  hor_df <- init_df %>%
-    filter(orientation == 'horizontal') %>%
-    group_by(ID) %>%
-    #width is instead the length of horizontal segment
-    mutate(segmentWidth = Y - min(Y)) %>%
-    distinct(X, .keep_all = T) %>%
-    filter(segmentWidth > 0)
-
-  hor_df
-
-  # # Define the parameters for the ellipse
-  # a <- cross_section_df$segmentWidth / 2  # Semi-major axis (half of width)
-  # b <- input$verticalChamberHeight - input$baffleHeight # Semi-minor axis (half of height)
-  # # Calculate perimeter of ellipse
-  # h <- ((a-b)/(a+b))^2
-  # p <- pi * (a + b) * (1 + 3 * h / (10 + sqrt((4 - 3 * h))))
-  # # Calculate length of chamber roof (half perimeter)
-  # cross_section_df$chamberRoofLength <- p / 2
-  # # Calculate half ellipse area
-  # cross_section_df$chamberUpperArea <- (pi * a * b) / 2
-  # # Calculate lower chamber area
-  # cross_section_df$chamberLowerArea <- cross_section_df$segmentWidth * input$baffleHeight
-  # # Area of each slice (defined by st_segmentize as 1cm so area == volume per sice)
-  # cross_section_df$sliceArea <- cross_section_df$chamberUpperArea + cross_section_df$chamberLowerArea
-
-  # data_list()
-  })
-
-  # cross_section_plot_data <- shiny::reactive({
-  #   req(cross_section_df)
-  #   req(input$verticalChamberHeight)
-  #   req(input$baffleHeight)
-
-  #   df <- 
-  #     cross_section_df() %>%
-  #     group_by(ID) %>%
-  #     filter(y == max(y)) %>%
-  #     mutate(
-  #   # Semi-major axis per slice
-  #   a = segmentWidth / 2
-  #     ) %>%
-  #     ungroup()
-    
-  #     # define constants
-  #     # Semi-minor axis
-  #     b <- input$verticalChamberHeight - input$baffleHeight 
-  #     # Create a sequence of t values from 0 to 2*pi
-  #     t <- seq(0, 2 * pi, length.out = 100)
-    
-  #   all_coords <- list()
-    
-  #   for (i in 1:length(df$ID))
-  #   {
-  #     x_start <- df$x[i] - df$segmentWidth[i]
-  #     # Parametric equations for the ellipse
-  #     x_coords <- df$a[i] * cos(t) + df$a[i] + x_start
-  #     y_coords <- b * sin(t) + input$baffleHeight
-  #     # Combine the x and y coordinates into a matrix and close the curve
-  #     coords <- cbind(x_coords[1:length(t)/2], y_coords[1:length(t)/2])
-  #     coords <- rbind(coords, c(x_start, 0), c(df$x[i], 0), coords[1,])
-  #     all_coords[[i]] <- coords
-  #   }
-
-  #   all_coords
-  # })
 
   # material_output <- shiny::reactive({
   #   req(data_list)
@@ -542,7 +605,7 @@ cross_section_df <- shiny::reactive({
       geom_point(aes()) +
       geom_path(linewidth = 1.5) +
       lims(x = c(0, input$maxDim), y = c(0, input$maxDim)) +
-      theme(legend.position = "bottom") +
+      theme_minimal() +
       coord_fixed()
   })
   
@@ -588,7 +651,7 @@ cross_section_df <- shiny::reactive({
   # -------------------------
 
   ## --- Page: Output Dimensions ---
-  output$area_plot <- shiny::renderPlot({
+  output$inner_plot <- shiny::renderPlot({
     req(data_list)
 
     vert <- data_list()[[1]] %>%
@@ -597,44 +660,70 @@ cross_section_df <- shiny::reactive({
     hor <- data_list()[[1]] %>%
       filter(orientation == 'horizontal')
 
-
-    ggplot() +
+    inner_plot <- ggplot() +
+      geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
       geom_path(data = vert, aes(x = X, y = Y, group = ID)) +
       geom_path(data = hor, aes(x = X, y = Y, group = ID)) +
-      theme(legend.position = "bottom")
+      theme_minimal() +
+      coord_fixed() #+
+      # coord_flip()
+    
+      data <- data_list()[[3]]
+    
+      # add each baffle cross-section
+      for (i in 1:length(data))
+        {
+        coords <- data[[i]]
+        chamber_polygon <- st_sfc(st_polygon(list(coords)))
+        # Combine them into an sf object
+        cross_sect_sf <- st_sf(geometry = c(chamber_polygon))
+        inner_plot <- inner_plot + geom_sf(data = cross_sect_sf, fill = "lightblue", color = "black")
+      }
+    
+    inner_plot
   })
 
-  output$cross_section_plot <- shiny::renderPlot({
+  output$outer_vert_plot <- shiny::renderPlot({
+    req(data_list)
 
-    data <- cross_section_plot_data()
+    # vert <- data_list()[[2]] %>%
+    #   filter(orientation == 'vertical')
+    vert <- data_list()[[4]] %>%
+      filter(orientation == 'vertical')
+    
 
-    plot <- ggplot() +
-      ggtitle("Chamber Cross-section") +
-      theme_minimal() 
-
-    # add each baffle cross-section
-    for (i in 1:length(data))
-    # for (i in 1:1)
-      {
-      coords <- data[[i]]
-      chamber_polygon <- st_sfc(st_polygon(list(coords)))
-      # Combine them into an sf object
-      cross_sect_sf <- st_sf(geometry = c(chamber_polygon))
-      plot <- plot + geom_sf(data = cross_sect_sf, fill = "lightblue", color = "black")
-    }
-
-    plot
+    outer_vert_plot <- ggplot() +
+      geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+      geom_path(data = vert, aes(x = X, y = Y, group = ID)) +
+      theme_minimal() +
+      coord_fixed() #+
+      # coord_flip()
+    
+    outer_vert_plot
   })
 
-  output$cross_section_plot_data <- shiny::renderPrint({
-    cross_section_plot_data()
+  output$outer_hor_plot <- shiny::renderPlot({
+    req(data_list)
+
+    hor <- data_list()[[2]] %>%
+      filter(orientation == 'horizontal')
+
+    outer_hor_plot <- ggplot() +
+      geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+      geom_path(data = hor, aes(x = X, y = Y, group = ID)) +
+      theme_minimal() +
+      coord_fixed() #+
+      # coord_flip()
+    
+    outer_hor_plot
   })
 
-  # output$test <- shiny::renderPrint({
-  #   material_output()
-  # })
+
+  # # output$test <- shiny::renderPrint({
+  # #   material_output()
+  # # })
   output$test <- shiny::renderPrint({
-    cross_section_df()
+    data_list()[[4]]
   })
 
 
