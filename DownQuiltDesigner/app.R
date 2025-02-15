@@ -472,19 +472,26 @@ data_list <- shiny::reactive({
         group_by(ID) %>%
         filter(X == min(X)) %>%
         ungroup()
-      right_point_data <- outer_poly %>% select("X", "Y", "ID", "orientation", "chamberRoofLength")
+      right_point_data <- outer_poly %>% select("Y", "ID", "orientation", "chamberRoofLength")
+      left_points_crl <- left_join(left_points, right_point_data, by = c("ID", "Y", "orientation"))
       # left_points <- left_join(left_points, , by = c("ID", "Y", "orientation"))
       # left_right$start <- 0
-      # for (i in 1:max(outer_poly$ID)){
-        right_points <- right_point_data %>%
-          group_by(Y) %>%
-          mutate(X = cumsum(chamberRoofLength)) %>%
-          ungroup() %>%
-          filter(ID == 5)#%>%
+      start <- 0
+      for (i in 1:5){#max(left_points_crl$ID)){
+        right_points <- left_points_crl %>%
+          filter(ID == i) %>%
+          mutate(X = chamberRoofLength)
+
+        # right_points <- right_point_data %>%
+        #   group_by(Y) %>%
+        #   mutate(X = cumsum(chamberRoofLength)) %>%
+        #   ungroup() %>%
+        #   filter(ID == 5)#%>%
           # select("X", "Y", "ID", "orientation")
       # outer_poly_update <- rbind(outer_poly_update, left_points)
+        outer_poly_update <- left_points_crl
         outer_poly_update <- right_points
-      # }
+      }
     }
 
     #} else if (orientation == 'horizontal'){
@@ -694,7 +701,7 @@ data_list <- shiny::reactive({
 
     outer_vert_plot <- ggplot() +
       geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-      geom_path(data = vert, aes(x = X, y = Y, group = ID)) +
+      geom_point(data = vert, aes(x = X, y = Y, group = ID)) +
       theme_minimal() +
       coord_fixed() #+
       # coord_flip()
