@@ -16,6 +16,7 @@ library(sf)
 ##TODO: 
 #Verify FP metric conversion
 #Display measurements in table
+# Fix horizontal baffle height calculation and plotting
 
 # list of dataframes includes:
 # 1 segmentized_poly which is the dataframe containing all inner layer polygons
@@ -463,61 +464,90 @@ data_list <- shiny::reactive({
     }
 
   }
+    
+    outer_segmented_poly <- data.frame(
+      X=double(),
+      Y=double(),
+      ID=integer(),
+      orientation=character(),
+      chamberRoofLength=double()
+  )
 
     # Outer layer dimensions
     if (orientation == 'vertical'){
-      outer_poly_update <- list()
       # Keep only the lowest value of X for each level of Y within each group
-      left_points <- segmentized_poly %>%
+      start_points <- segmentized_poly %>%
         group_by(ID) %>%
         filter(X == min(X)) %>%
         ungroup()
-      right_point_data <- outer_poly %>% select("Y", "ID", "orientation", "chamberRoofLength")
-      left_points_crl <- left_join(left_points, right_point_data, by = c("ID", "Y", "orientation"))
-      # left_points <- left_join(left_points, , by = c("ID", "Y", "orientation"))
-      # left_right$start <- 0
+      end_point_data <- outer_poly %>% select("Y", "ID", "orientation", "chamberRoofLength")
+      start_points_crl <- left_join(start_points, end_point_data, by = c("ID", "Y", "orientation"))
+      # the start is the leftmost x value of the subpolygon
       start <- 0
-      for (i in 1:5){#max(left_points_crl$ID)){
-        right_points <- left_points_crl %>%
+      for (i in 1:max(start_points_crl$ID)){
+        end_points <- start_points_crl %>%
           filter(ID == i) %>%
-          mutate(X = chamberRoofLength)
+          mutate(X = chamberRoofLength + start)
+        start_points <- end_points %>%
+          mutate(X = X - chamberRoofLength)
 
-        # right_points <- right_point_data %>%
-        #   group_by(Y) %>%
-        #   mutate(X = cumsum(chamberRoofLength)) %>%
-        #   ungroup() %>%
-        #   filter(ID == 5)#%>%
-          # select("X", "Y", "ID", "orientation")
-      # outer_poly_update <- rbind(outer_poly_update, left_points)
-        outer_poly_update <- left_points_crl
-        outer_poly_update <- right_points
+        end <- max(end_points$X)
+
+        outer_segmented_poly <- rbind(outer_segmented_poly, end_points, start_points)
+        start <- end
+        outer_poly_update <- outer_segmented_poly
       }
-    }
+      #TODO
+      } else if (orientation == 'horizontal'){
+      # Keep only the highest value of Y within each group
+      start_points <- segmentized_poly %>%
+        group_by(ID) %>%
+        filter(Y == max(Y)) %>%
+        ungroup()
+      end_point_data <- outer_poly %>% select("Y", "ID", "orientation", "chamberRoofLength")
+      start_points_crl <- left_join(start_points, end_point_data, by = c("ID", "Y", "orientation"))
+      # the start is the uppermost y value of the subpolygon
+      start <- max(start_points_crl$Y)
+      for (i in 1:2){#max(start_points_crl$ID)){
+        end_points <- start_points_crl %>%
+          filter(ID == i) %>%
+          mutate(Y = start - chamberRoofLength)
+        start_points <- end_points %>%
+          mutate(Y = Y + chamberRoofLength)
 
-    #} else if (orientation == 'horizontal'){
+        end <- min(end_points$Y)
+
+        outer_segmented_poly <- rbind(outer_segmented_poly, end_points, start_points)
+        start <- end
+        outer_poly_update <- outer_segmented_poly
+
+    }
+  }
+
+    #} 
 
   
 
 
     return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_poly_update))
-  }
+      }
 
   #TODO: Combine all elements of the lists correctly
   # Cross-section plot data may need to be imported separately 
   vert_list <- define_chambers(vert, 'vertical')
-  # hor_list <- define_chambers(hor, 'horizontal')
+  hor_list <- define_chambers(hor, 'horizontal')
 
   # segmentized_poly <- rbind(vert_list[[1]],hor_list[[1]])
   # outer_poly <- rbind(vert_list[[2]],hor_list[[2]])
 
-  vert_list
-  # hor_list
+  # vert_list
+  hor_list
 
   # init_df <- rbind(define_chambers(vert, 'vertical'), define_chambers(hor, 'horizontal'))
   # init_df
 
   # out <- list(init_df, init_df)
-})
+  })
 
 
   # material_output <- shiny::reactive({
@@ -716,8 +746,8 @@ data_list <- shiny::reactive({
       filter(orientation == 'horizontal')
 
     outer_hor_plot <- ggplot() +
-      geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-      geom_path(data = hor, aes(x = X, y = Y, group = ID)) +
+      # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+      geom_point(data = hor, aes(x = X, y = Y, group = ID)) +
       theme_minimal() +
       coord_fixed() #+
       # coord_flip()
