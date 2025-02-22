@@ -17,6 +17,7 @@ library(sf)
 #Verify FP metric conversion
 #Display measurements in table
 # Fix horizontal baffle height calculation and plotting
+# Fix final vertical scaling
 
 # list of dataframes includes:
 # 1 segmentized_poly which is the dataframe containing all inner layer polygons
@@ -504,11 +505,11 @@ data_list <- shiny::reactive({
         group_by(ID) %>%
         filter(Y == max(Y)) %>%
         ungroup()
-      end_point_data <- outer_poly %>% select("Y", "ID", "orientation", "chamberRoofLength")
-      start_points_crl <- left_join(start_points, end_point_data, by = c("ID", "Y", "orientation"))
+      end_point_data <- outer_poly %>% select("X", "ID", "orientation", "chamberRoofLength")
+      start_points_crl <- right_join(start_points, end_point_data, by = c("ID", "X", "orientation"))
       # the start is the uppermost y value of the subpolygon
-      start <- max(start_points_crl$Y)
-      for (i in 1:2){#max(start_points_crl$ID)){
+      start <- input$baffleSplitHeight
+      for (i in 1:max(start_points_crl$ID)){
         end_points <- start_points_crl %>%
           filter(ID == i) %>%
           mutate(Y = start - chamberRoofLength)
@@ -520,6 +521,12 @@ data_list <- shiny::reactive({
         outer_segmented_poly <- rbind(outer_segmented_poly, end_points, start_points)
         start <- end
         outer_poly_update <- outer_segmented_poly
+        # outer_poly_update <- end_point_data
+        # outer_poly_update <- start_points_crl
+        
+        # outer_poly_update <- end_points
+        # outer_poly_update <- start_points
+
 
     }
   }
@@ -540,8 +547,8 @@ data_list <- shiny::reactive({
   # segmentized_poly <- rbind(vert_list[[1]],hor_list[[1]])
   # outer_poly <- rbind(vert_list[[2]],hor_list[[2]])
 
-  # vert_list
-  hor_list
+  vert_list
+  # hor_list
 
   # init_df <- rbind(define_chambers(vert, 'vertical'), define_chambers(hor, 'horizontal'))
   # init_df
@@ -742,7 +749,7 @@ data_list <- shiny::reactive({
   output$outer_hor_plot <- shiny::renderPlot({
     req(data_list)
 
-    hor <- data_list()[[2]] %>%
+    hor <- data_list()[[4]] %>%
       filter(orientation == 'horizontal')
 
     outer_hor_plot <- ggplot() +
