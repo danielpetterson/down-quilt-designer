@@ -17,7 +17,7 @@ library(sf)
 #Verify FP metric conversion
 #Display measurements in table
 # Fix horizontal baffle height calculation and plotting
-# Fix final vertical scaling
+# Fix final vertical scaling. Issue arrises when diagonal line cuts through multiple subpolygons. Horizontally might be resolved by filtering for set y values and then adjusting vertical to mirror this
 
 # list of dataframes includes:
 # 1 segmentized_poly which is the dataframe containing all inner layer polygons
@@ -531,7 +531,6 @@ data_list <- shiny::reactive({
     }
   }
 
-    #} 
 
   
 
@@ -539,21 +538,20 @@ data_list <- shiny::reactive({
     return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_poly_update))
       }
 
-  #TODO: Combine all elements of the lists correctly
   # Cross-section plot data may need to be imported separately 
   vert_list <- define_chambers(vert, 'vertical')
   hor_list <- define_chambers(hor, 'horizontal')
 
-  # segmentized_poly <- rbind(vert_list[[1]],hor_list[[1]])
-  # outer_poly <- rbind(vert_list[[2]],hor_list[[2]])
-
-  vert_list
+  # vert_list
   # hor_list
 
-  # init_df <- rbind(define_chambers(vert, 'vertical'), define_chambers(hor, 'horizontal'))
-  # init_df
+  list(
+    rbind(vert_list[[1]], hor_list[[1]]),
+    rbind(vert_list[[2]], hor_list[[2]]),
+    rbind(vert_list[[3]], hor_list[[3]]),
+    rbind(vert_list[[4]], hor_list[[4]])
+  )
 
-  # out <- list(init_df, init_df)
   })
 
 
@@ -709,8 +707,7 @@ data_list <- shiny::reactive({
       geom_path(data = vert, aes(x = X, y = Y, group = ID)) +
       geom_path(data = hor, aes(x = X, y = Y, group = ID)) +
       theme_minimal() +
-      coord_fixed() #+
-      # coord_flip()
+      coord_fixed() 
     
       data <- data_list()[[3]]
     
@@ -721,7 +718,8 @@ data_list <- shiny::reactive({
         chamber_polygon <- st_sfc(st_polygon(list(coords)))
         # Combine them into an sf object
         cross_sect_sf <- st_sf(geometry = c(chamber_polygon))
-        inner_plot <- inner_plot + geom_sf(data = cross_sect_sf, fill = "lightblue", color = "black")
+        inner_plot <- inner_plot + 
+          geom_sf(data = cross_sect_sf, fill = "lightblue", color = "black")
       }
     
     inner_plot
