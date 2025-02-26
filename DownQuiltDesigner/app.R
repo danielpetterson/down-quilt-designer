@@ -16,7 +16,6 @@ library(sf)
 ##TODO: 
 #Verify FP metric conversion
 #Display measurements in table
-# Fix horizontal baffle height calculation and plotting
 # Fix final vertical scaling. Issue arrises when diagonal line cuts through multiple subpolygons. Horizontally might be resolved by filtering for set y values and then adjusting vertical to mirror this
 
 # list of dataframes includes:
@@ -520,19 +519,12 @@ data_list <- shiny::reactive({
         outer_segmented_poly <- rbind(outer_segmented_poly, end_points)
         start <- end
         outer_poly_update <- outer_segmented_poly
-        # outer_poly_update <- end_point_data
-        # outer_poly_update <- start_points_crl
-        
-        # outer_poly_update <- end_points
-        # outer_poly_update <- start_points
-
-
     }
     # Subset to chamber wall points
-        #TODO fix issue with certain values of baffle_y
-    baffle_y <- seq(input$baffleSplitHeight, min(outer_poly_update$Y), -max(outer_poly_update$chamberRoofLength))
+    baffle_y <- outer_poly_update %>%
+      filter(X == 0)
     outer_poly_update <- outer_poly_update %>%
-      filter(Y %in% c(baffle_y, min(Y)))
+      filter(Y %in% c(baffle_y$Y, min(Y)))
       }
 
 
@@ -623,6 +615,9 @@ data_list <- shiny::reactive({
   #     filter(y > 0)
   #   volume <- sum(vol_data$sliceArea) * 2
   #   # down volume per gram CUIN/oz to CUCM/g
+  ## IDFL paper suggests using 28.77 for inch/cm conversions
+  ## Samples are usually 28.4/28.5 or 30 grams depending on type of test
+  ## Volume / FP = weight
   #   FP_metric <- (input$FP * 16.387064) / 28.34952
   #   # number of grams needed
   #   grams_down <- volume/FP_metric
