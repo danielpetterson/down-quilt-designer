@@ -432,7 +432,7 @@ data_list <- shiny::reactive({
     for (i in 1:length(df$ID))
     {
       #positioning within plot
-      y_translate <- max(segmentized_poly$Y) + (max(segmentized_poly$Y) / 20)
+      y_translate <- max(segmentized_poly$Y) + (max(segmentized_poly$Y) / 40)
       
       x_start <- df$X[i] - df$segmentWidth[i]
       # Parametric equations for the ellipse
@@ -498,7 +498,6 @@ data_list <- shiny::reactive({
         start <- end
         outer_poly_update <- outer_segmented_poly
       }
-      #TODO
       } else if (orientation == 'horizontal'){
       # Keep only the highest value of Y within each group
       start_points <- segmentized_poly %>%
@@ -518,7 +517,7 @@ data_list <- shiny::reactive({
 
         end <- min(end_points$Y)
 
-        outer_segmented_poly <- rbind(outer_segmented_poly, end_points, start_points)
+        outer_segmented_poly <- rbind(outer_segmented_poly, end_points)
         start <- end
         outer_poly_update <- outer_segmented_poly
         # outer_poly_update <- end_point_data
@@ -529,7 +528,12 @@ data_list <- shiny::reactive({
 
 
     }
-  }
+    # Subset to chamber wall points
+        #TODO fix issue with certain values of baffle_y
+    baffle_y <- seq(input$baffleSplitHeight, min(outer_poly_update$Y), -max(outer_poly_update$chamberRoofLength))
+    outer_poly_update <- outer_poly_update %>%
+      filter(Y %in% c(baffle_y, min(Y)))
+      }
 
 
   
@@ -728,8 +732,6 @@ data_list <- shiny::reactive({
   output$outer_vert_plot <- shiny::renderPlot({
     req(data_list)
 
-    # vert <- data_list()[[2]] %>%
-    #   filter(orientation == 'vertical')
     vert <- data_list()[[4]] %>%
       filter(orientation == 'vertical')
     
@@ -765,7 +767,8 @@ data_list <- shiny::reactive({
   # #   material_output()
   # # })
   output$test <- shiny::renderPrint({
-    data_list()[[4]]
+    data_list()[[4]] %>%
+      filter(orientation == 'horizontal')
   })
 
 
