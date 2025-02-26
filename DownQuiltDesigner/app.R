@@ -16,19 +16,19 @@ library(sf)
 ##TODO: 
 #Verify FP metric conversion
 #Display measurements in table
-# Fix final vertical scaling. Issue arrises when diagonal line cuts through multiple subpolygons. Horizontally might be resolved by filtering for set y values and then adjusting vertical to mirror this
+# Fix final vertical scaling. Issue arrises when diagonal line cuts through multiple subpolygons.
 
 # list of dataframes includes:
 # 1 segmentized_poly which is the dataframe containing all inner layer polygons
-# 2 outer_poly contains all outer layer polygons
+# 2 outer_poly contains all inner layer polygons with chamber roof length calculations
 # 3 cross section plot data
+# 4 outer_poly_update. DF of polygon points grouped by chamber/orientation. For cutting dimensions.
 
 # Issues:
-# 100% vertical baffles. Same issue not present for 100% horizontal.
-# Error: not implemented for objects of class sfc_GEOMETRY
+# 100% baffles in either direction. Could consider offsetting by a tiny amount.
 
 
-options(digits=2)
+# options(digits=2)
 
 # Functions
 #---------------------------
@@ -41,7 +41,7 @@ round_any = function(x, accuracy, f=round){f(x/ accuracy) * accuracy}
 design_accordion <- bslib::accordion_panel(
   "Design",# icon = bsicons::bs_icon("menu-app"),
   numericInput('maxDim','Longest Dimension (cm)', 210, min = 0),
-  numericInput('baffleSplitHeight','Baffle Orientation Change Height', 50, min = 0, max = 100),
+  numericInput('orientationSplitHeight','Baffle Orientation Change Height', 50, min = 0, max = 100),
   numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
   numericInput('verticalChamberHeight','Max Vertical Chamber Height (cm)', 2.5, min = 0),
   numericInput('verticalChamberWidth','Vertical Chamber Width (cm)', 15, min = 0),
@@ -272,7 +272,7 @@ data_list <- shiny::reactive({
   req(all_selected_points_y)
   req(input$verticalChamberWidth)
   req(input$horizontalChamberWidth)
-  req(input$baffleSplitHeight)
+  req(input$orientationSplitHeight)
 
   
 
@@ -284,7 +284,7 @@ data_list <- shiny::reactive({
   #create polygon from selected points
   poly <- st_sfc(sf::st_polygon(list(cbind(points$x, points$y))))
 
-  split_height <- input$baffleSplitHeight
+  split_height <- input$orientationSplitHeight
   vert_bbox <- st_sfc(st_polygon(list(cbind(
     c(0, max(points$x), max(points$x), 0, 0), 
     c(max(points$y), max(points$y), split_height, split_height, max(points$y))))))
@@ -503,10 +503,13 @@ data_list <- shiny::reactive({
         group_by(ID) %>%
         filter(Y == max(Y)) %>%
         ungroup()
+      # outer_segmented_poly <- rbind(outer_segmented_poly, start_points[ID==1])
       end_point_data <- outer_poly %>% select("X", "ID", "orientation", "chamberRoofLength")
       start_points_crl <- right_join(start_points, end_point_data, by = c("ID", "X", "orientation"))
       # the start is the uppermost y value of the subpolygon
-      start <- input$baffleSplitHeight
+      start <- input$orientationSplitHeight
+      # Add starting horizontal line at orientation split height
+      outer_segmented_poly <- start_points_crl %>% filter(ID==1) %>% mutate(Y=start)
       for (i in 1:max(start_points_crl$ID)){
         end_points <- start_points_crl %>%
           filter(ID == i) %>%
@@ -520,26 +523,21 @@ data_list <- shiny::reactive({
         start <- end
         outer_poly_update <- outer_segmented_poly
     }
+
     # Subset to chamber wall points
     baffle_y <- outer_poly_update %>%
       filter(X == 0)
     outer_poly_update <- outer_poly_update %>%
-      filter(Y %in% c(baffle_y$Y, min(Y)))
+      filter(Y %in% c(input$orientationSplitHeight, baffle_y$Y, min(Y))) %>%
+      # Apply offset
+      mutate(Y = Y - min(Y))
       }
-
-
-  
-
-
     return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_poly_update))
       }
 
   # Cross-section plot data may need to be imported separately 
   vert_list <- define_chambers(vert, 'vertical')
   hor_list <- define_chambers(hor, 'horizontal')
-
-  # vert_list
-  # hor_list
 
   list(
     rbind(vert_list[[1]], hor_list[[1]]),
