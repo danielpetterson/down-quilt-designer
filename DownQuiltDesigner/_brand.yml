@@ -1,0 +1,34 @@
+meta:
+  name:
+    short: DataSquared
+    full: DataSquared Consulting
+  link:
+    home: https://www.datasquared.com
+    github: https://github.com/datasquared
+    linkedin: https://www.linkedin.com/company/datasquared
+
+color:
+  palette:
+    orange: "#F96302"
+    white: "#FFFFFF"
+    black: "#000000"
+    warm-gray-light: "#F5F5F5"
+    warm-gray-dark: "#747474"
+    warm-gray-medium: "#C4C4C4"
+  foreground: black
+  background: white
+  primary: orange
+  secondary: warm-gray-dark
+  light: warm-gray-light
+  dark: warm-gray-dark
+
+typography:
+  fonts:
+    - family: Open Sans
+      source: bunny
+    - family: Source Code Pro
+      source: bunny
+  base: Open Sans
+  headings:
+    weight: light
+  monospace: Source Code Pro
