@@ -9,18 +9,33 @@ meta:
 
 color:
   palette:
-    orange: "#F96302"
-    white: "#FFFFFF"
-    black: "#000000"
-    warm-gray-light: "#F5F5F5"
-    warm-gray-dark: "#747474"
-    warm-gray-medium: "#C4C4C4"
+    blue:      "#0d6efd"
+    white:    "#fff"
+    gray-100: "#f8f9fa"
+    gray-200: "#e9ecef"
+    gray-300: "#dee2e6"
+    gray-400: "#ced4da"
+    gray-500: "#adb5bd"
+    gray-600: "#6c757d"
+    gray-700: "#495057"
+    gray-800: "#343a40"
+    gray-900: "#212529"
+    black:    "#000"
+    red:     "#dc3545"
+    orange:  "#fd7e14"
+    green:   "#198754"
+    cyan:    "#0dcaf0"
+    
   foreground: black
   background: white
-  primary: orange
-  secondary: warm-gray-dark
-  light: warm-gray-light
-  dark: warm-gray-dark
+  primary: blue
+  secondary: gray-600
+  light: gray-100
+  dark: gray-900
+  success: green
+  info: cyan
+  warning: orange
+  danger: red
 
 typography:
   fonts:
