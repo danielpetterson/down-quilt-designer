@@ -1,5 +1,6 @@
 library(shiny)
 library(ggplot2)
+library(ggiraph)
 
 ui <- shiny::pageWithSidebar(
   headerPanel("Example"),

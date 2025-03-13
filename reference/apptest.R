@@ -1,3 +1,5 @@
+library(shiny)
+
 # A basic shiny app with a plotOutput
 shinyApp(
   ui = fluidPage(
@@ -150,3 +152,5 @@ shinyApp(
     })
   }
 )
+
+shiny::shinyApp(ui, server)

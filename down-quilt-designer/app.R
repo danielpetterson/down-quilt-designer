@@ -2,10 +2,10 @@ library(shiny)
 library(bslib)
 library(bsicons)
 library(ggplot2)
+library(ggiraph)
 library(dplyr)
 library(sf)
 
-thematic::thematic_shiny()
 
 
 ##TODO:
@@ -19,6 +19,7 @@ thematic::thematic_shiny()
 #Verify FP metric conversion 
 #Display measurements in table
 # Fix final vertical scaling. Issue arrises when diagonal line cuts through multiple subpolygons.
+#Test brand.yml
 
 # list of dataframes includes:
 # 1 segmentized_poly which is the dataframe containing all inner layer polygons
@@ -178,7 +179,7 @@ for (i in 1:length(specs_name)) {
   specs[[i]] <- bslib::value_box(
     title = specs_name[i],
     value = "123",
-    theme = "purple",
+    # theme = "purple",
   )
 }
 
