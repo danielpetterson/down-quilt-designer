@@ -5,6 +5,8 @@ library(ggplot2)
 library(dplyr)
 library(sf)
 
+thematic::thematic_shiny()
+
 
 ##TODO:
 # (gg)Plot subpolygons with pointer displaying info about:
@@ -14,7 +16,7 @@ library(sf)
 
 # Info panel with expected weight and total down, baffle material needed
 ##TODO: 
-#Verify FP metric conversion
+#Verify FP metric conversion 
 #Display measurements in table
 # Fix final vertical scaling. Issue arrises when diagonal line cuts through multiple subpolygons.
 
@@ -183,7 +185,7 @@ for (i in 1:length(specs_name)) {
 # UI layout
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
-  theme = bslib::bs_theme(version = 5, bootswatch = "sketchy", base_font = "sans-serif"),
+  theme = bs_theme(brand=T),
   sidebar = bslib::sidebar(
     bslib::accordion(
       design_accordion,
@@ -543,7 +545,7 @@ data_list <- shiny::reactive({
     rbind(vert_list[[1]], hor_list[[1]]),
     rbind(vert_list[[2]], hor_list[[2]]),
     rbind(vert_list[[3]], hor_list[[3]]),
-    rbind(vert_list[[4]], hor_list[[4]])
+    list(vert_list[[4]], hor_list[[4]])
   )
 
   })
@@ -725,8 +727,8 @@ data_list <- shiny::reactive({
   output$outer_vert_plot <- shiny::renderPlot({
     req(data_list)
 
-    vert <- data_list()[[4]] %>%
-      filter(orientation == 'vertical')
+    vert <- data_list()[[4]][[1]]# %>%
+      # filter(orientation == 'vertical')
     
 
     outer_vert_plot <- ggplot() +
@@ -742,8 +744,8 @@ data_list <- shiny::reactive({
   output$outer_hor_plot <- shiny::renderPlot({
     req(data_list)
 
-    hor <- data_list()[[4]] %>%
-      filter(orientation == 'horizontal')
+    hor <- data_list()[[4]][[2]] #%>%
+      # filter(orientation == 'horizontal')
 
     outer_hor_plot <- ggplot() +
       # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
