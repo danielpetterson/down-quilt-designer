@@ -18,8 +18,11 @@ library(sf)
 ##TODO: 
 #Verify FP metric conversion 
 #Display measurements in table
-# Fix final vertical scaling. Issue arrises when diagonal line cuts through multiple subpolygons.
+# Fix final vertical scaling. Issue arises when diagonal line cuts through multiple subpolygons.
 #Test brand.yml
+# convert df to list of sf objects
+# Add interactivity via ggiraph
+# Display list of sf object points. Use cutoff as equal or greater than the lower of the two main vertices. Simplify with main vertices and any values between.
 
 # list of dataframes includes:
 # 1 segmentized_poly which is the dataframe containing all inner layer polygons
@@ -116,11 +119,11 @@ inner_card <- bslib::card(
 )
 
 outer_vert_card <- bslib::card(
-  plotOutput("outer_vert_plot")
+  girafeOutput("outer_vert_plot")
 )
 
 outer_hor_card <- bslib::card(
-  plotOutput("outer_hor_plot")
+  girafeOutput("outer_hor_plot")
 )
 
 plot_input_card <- bslib::card(
@@ -361,26 +364,26 @@ data_list <- shiny::reactive({
       subpolys[[i]] <- as.data.frame(st_coordinates(subpolys[[i]]))
       subpolys[[i]]['ID'] <- id[i]
     }
-    segmentized_poly <- do.call(rbind, subpolys) %>%
-      select(X, Y, ID) %>%
+    segmentized_poly <- do.call(rbind, subpolys) |>
+      select(X, Y, ID) |>
       mutate(orientation = orientation)
 
     if (orientation == 'vertical'){
-      outer_poly <- segmentized_poly %>%
+      outer_poly <- segmentized_poly |>
         #group byb chamber ID
-        group_by(ID) %>%
+        group_by(ID) |>
         #segmentwidth is width of inner layer in a given chamber at a given y value (1cm increments)
-        mutate(segmentWidth = X - min(X)) %>%
+        mutate(segmentWidth = X - min(X)) |>
         #subset to only single observation per y unit per group
-        distinct(Y, .keep_all = T) %>%
+        distinct(Y, .keep_all = T) |>
         #keep only rightmost observations since measuring from left to right
         filter(segmentWidth > 0)
     } else if (orientation == 'horizontal'){
-      outer_poly <- segmentized_poly %>%
-        group_by(ID) %>%
+      outer_poly <- segmentized_poly |>
+        group_by(ID) |>
         #width is instead the length of horizontal segment
-        mutate(segmentWidth = max(Y) - Y) %>%
-        distinct(X, .keep_all = T) %>%
+        mutate(segmentWidth = max(Y) - Y) |>
+        distinct(X, .keep_all = T) |>
         filter(segmentWidth > 0)
     }
 
@@ -405,22 +408,22 @@ data_list <- shiny::reactive({
     outer_poly$sliceArea <- outer_poly$chamberUpperArea + outer_poly$chamberLowerArea
 
     if (orientation == "vertical"){
-      df <- outer_poly %>%
-        group_by(ID) %>%
-        filter(Y == max(Y)) %>%
+      df <- outer_poly |>
+        group_by(ID) |>
+        filter(Y == max(Y)) |>
         mutate(
       # Semi-major axis per slice
       a = segmentWidth / 2
-        ) %>%
+        ) |>
         ungroup()
   } else if (orientation == "horizontal") {
-    df <- outer_poly %>%
-      group_by(ID) %>%
-      filter(X == min(X)) %>%
+    df <- outer_poly |>
+      group_by(ID) |>
+      filter(X == min(X)) |>
       mutate(
     # Semi-major axis per slice
     a = segmentWidth / 2
-      ) %>%
+      ) |>
       ungroup()
   }
 
@@ -479,19 +482,19 @@ data_list <- shiny::reactive({
     # Outer layer dimensions
     if (orientation == 'vertical'){
       # Keep only the lowest value of X for each level of Y within each group
-      start_points <- segmentized_poly %>%
-        group_by(ID) %>%
-        filter(X == min(X)) %>%
+      start_points <- segmentized_poly |>
+        group_by(ID) |>
+        filter(X == min(X)) |>
         ungroup()
-      end_point_data <- outer_poly %>% select("Y", "ID", "orientation", "chamberRoofLength")
+      end_point_data <- outer_poly |> select("Y", "ID", "orientation", "chamberRoofLength")
       start_points_crl <- left_join(start_points, end_point_data, by = c("ID", "Y", "orientation"))
       # the start is the leftmost x value of the subpolygon
       start <- 0
       for (i in 1:max(start_points_crl$ID)){
-        end_points <- start_points_crl %>%
-          filter(ID == i) %>%
+        end_points <- start_points_crl |>
+          filter(ID == i) |>
           mutate(X = chamberRoofLength + start)
-        start_points <- end_points %>%
+        start_points <- end_points |>
           mutate(X = X - chamberRoofLength)
 
         end <- max(end_points$X)
@@ -500,24 +503,84 @@ data_list <- shiny::reactive({
         start <- end
         outer_poly_update <- outer_segmented_poly
       }
+
+      #list of sf shapes in outer layer
+      outer_layer_lst <- list()
+
+      # for (i in 1:max(outer_poly_update$ID)){
+      for (i in 1:1){
+        poly_points <- outer_poly_update |>
+          filter(ID == i) |> 
+          select(X, Y)#, orientation)
+        # first line is one closer to X=0
+        ##first line is ascending y
+        first_line <- poly_points |>
+          filter(X == min(X))
+        ##reverse order of points
+        second_line <- poly_points |>
+          filter(X == max(X)) |>
+          arrange(desc(Y))
+        ##interim points upper
+        upper_threshold <- min(max(first_line$Y), max(second_line$Y))
+        interim_points_upper <- poly_points |>
+          filter(X > min(X) & X < max(X)) |>
+          filter(Y >= upper_threshold) |>
+          arrange(X)
+        ##interim points lower
+        lower_threshold <- max(min(first_line$Y), min(second_line$Y))
+        interim_points_lower <- poly_points |>
+          filter(X > min(X) & X < max(X)) |>
+          arrange(desc(X))
+        ##needed to complete polygon
+        first_point <- first_line[1,]
+
+        # poly_coords <- st_polygon(list(rbind(
+        #   first_line,
+        #   interim_points_upper,
+        #   second_line,
+        #   interim_points_lower,
+        #   first_point
+        # )))
+
+        poly_coords <- as.data.frame(rbind(
+          first_line,
+          interim_points_upper,
+          second_line,
+          interim_points_lower,
+          first_point
+        ))
+
+        chamber_sf <- st_sf(
+          geometry = st_sfc(st_polygon(list(as.matrix(poly_coords))))
+        )
+
+        # chamber_polygon <- st_sfc(st_polygon(list(poly_coords)))
+        # # Combine them into an sf object
+        # chamber_sf <- st_sf(geometry = c(chamber_polygon))
+
+        # outer_layer_lst <- c(outer_layer_lst, poly_coords)
+        # outer_layer_lst <- poly_coords
+        outer_layer_lst <- chamber_sf
+      }
+      outer_layer_lst
       } else if (orientation == 'horizontal'){
       # Keep only the highest value of Y within each group
-      start_points <- segmentized_poly %>%
-        group_by(ID) %>%
-        filter(Y == max(Y)) %>%
+      start_points <- segmentized_poly |>
+        group_by(ID) |>
+        filter(Y == max(Y)) |>
         ungroup()
       # outer_segmented_poly <- rbind(outer_segmented_poly, start_points[ID==1])
-      end_point_data <- outer_poly %>% select("X", "ID", "orientation", "chamberRoofLength")
+      end_point_data <- outer_poly |> select("X", "ID", "orientation", "chamberRoofLength")
       start_points_crl <- right_join(start_points, end_point_data, by = c("ID", "X", "orientation"))
       # the start is the uppermost y value of the subpolygon
       start <- input$orientationSplitHeight
       # Add starting horizontal line at orientation split height
-      outer_segmented_poly <- start_points_crl %>% filter(ID==1) %>% mutate(Y=start)
+      outer_segmented_poly <- start_points_crl |> filter(ID==1) |> mutate(Y=start)
       for (i in 1:max(start_points_crl$ID)){
-        end_points <- start_points_crl %>%
-          filter(ID == i) %>%
+        end_points <- start_points_crl |>
+          filter(ID == i) |>
           mutate(Y = start - chamberRoofLength)
-        start_points <- end_points %>%
+        start_points <- end_points |>
           mutate(Y = Y + chamberRoofLength)
 
         end <- min(end_points$Y)
@@ -525,18 +588,23 @@ data_list <- shiny::reactive({
         outer_segmented_poly <- rbind(outer_segmented_poly, end_points)
         start <- end
         outer_poly_update <- outer_segmented_poly
-    }
 
-    # Subset to chamber wall points
-    baffle_y <- outer_poly_update %>%
-      filter(X == 0)
-    outer_poly_update <- outer_poly_update %>%
-      filter(Y %in% c(input$orientationSplitHeight, baffle_y$Y, min(Y))) %>%
-      # Apply offset
-      mutate(Y = Y - min(Y))
+      #list of sf shapes in outer layer
+      outer_layer_lst <- list()
+        
+      outer_layer_lst
       }
-    return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_poly_update))
+
+    # # Subset to chamber wall points
+    # baffle_y <- outer_poly_update |>
+    #   filter(X == 0)
+    # outer_poly_update <- outer_poly_update |>
+    #   filter(Y %in% c(input$orientationSplitHeight, baffle_y$Y, min(Y))) |>
+    #   # Apply offset
+    #   mutate(Y = Y - min(Y))
       }
+    return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_layer_lst))
+  }
 
   # Cross-section plot data may need to be imported separately 
   vert_list <- define_chambers(vert, 'vertical')
@@ -546,7 +614,8 @@ data_list <- shiny::reactive({
     rbind(vert_list[[1]], hor_list[[1]]),
     rbind(vert_list[[2]], hor_list[[2]]),
     rbind(vert_list[[3]], hor_list[[3]]),
-    list(vert_list[[4]], hor_list[[4]])
+    # list(vert_list[[4]], hor_list[[4]])
+    list(vert_list[[4]])
   )
 
   })
@@ -573,10 +642,10 @@ data_list <- shiny::reactive({
 
   #   # ---Baffle Material---
   #   baffle_mat_height <- input$baffleHeight + (2 * input$seamAllowance)
-  #   baffle_mat_length_by_chamber <- data_list() %>%
-  #     group_by(ID) %>%
-  #     filter(x == min(x)) %>%
-  #     summarize(length = max(y) - min(y)) %>%
+  #   baffle_mat_length_by_chamber <- data_list() |>
+  #     group_by(ID) |>
+  #     filter(x == min(x)) |>
+  #     summarize(length = max(y) - min(y)) |>
   #     ungroup()
   #   baffle_mat_length <- (sum(baffle_mat_length_by_chamber$length) * 2) - baffle_mat_length_by_chamber$length[1]
   #   baffle_mat_area <- baffle_mat_height * baffle_mat_length
@@ -594,8 +663,8 @@ data_list <- shiny::reactive({
   #   inner_mat_weight <- inner_mat_area / 10000 * input$innerWeight
 
   #   # ---Outer Layer---
-  #   right_points <- cross_section_df() %>%
-  #     group_by(y) %>%
+  #   right_points <- cross_section_df() |>
+  #     group_by(y) |>
   #     summarize(x = sum(chamberRoofLength) + input$baffleHeight)
   #   outer_points <- data.frame(
   #     x = c(right_points$x, -rev(right_points$x)),
@@ -612,7 +681,7 @@ data_list <- shiny::reactive({
 
   #   # ---Volume---
   #   # exclude final slice from cumulative total
-  #   vol_data <- cross_section_df() %>%
+  #   vol_data <- cross_section_df() |>
   #     filter(y > 0)
   #   volume <- sum(vol_data$sliceArea) * 2
   #   # down volume per gram CUIN/oz to CUCM/g
@@ -696,10 +765,10 @@ data_list <- shiny::reactive({
   output$inner_plot <- shiny::renderPlot({
     req(data_list)
 
-    vert <- data_list()[[1]] %>%
+    vert <- data_list()[[1]] |>
       filter(orientation == 'vertical')
 
-    hor <- data_list()[[1]] %>%
+    hor <- data_list()[[1]] |>
       filter(orientation == 'horizontal')
 
     inner_plot <- ggplot() +
@@ -725,37 +794,59 @@ data_list <- shiny::reactive({
     inner_plot
   })
 
-  output$outer_vert_plot <- shiny::renderPlot({
-    req(data_list)
+  output$outer_vert_plot <- renderGirafe({
+    # req(data_list)
 
-    vert <- data_list()[[4]][[1]]# %>%
-      # filter(orientation == 'vertical')
+    # vert <- data_list()[[4]][[1]]# |>
+    #   # filter(orientation == 'vertical')
     
 
-    outer_vert_plot <- ggplot() +
-      geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-      geom_point(data = vert, aes(x = X, y = Y, group = ID)) +
-      theme_minimal() +
-      coord_fixed() #+
-      # coord_flip()
+    # outer_vert_plot <- ggplot() +
+    #   geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+    #   # geom_path(data = vert, aes(x = X, y = Y)) +
+    #   geom_sf_interactive(data = vert) #+
+    #   # theme_minimal() +
+    #   # coord_fixed() #+
+    #   # coord_flip()
     
-    outer_vert_plot
+    #   x <- girafe(ggobj = outer_vert_plot)
+    #   if( interactive() ) print(x)
+    if (requireNamespace("sf",
+                     quietly = TRUE,
+                     versionCheck = c(op = ">=", version = "0.7-3"))) {
+  nc <- sf::st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
+  gg <- ggplot(nc) +
+    geom_sf_interactive(aes(fill = AREA, tooltip = c(NAME, NAME), data_id = NAME))
+  girafe(ggobj = gg)
+
+}
   })
 
-  output$outer_hor_plot <- shiny::renderPlot({
-    req(data_list)
+  output$outer_hor_plot <- renderGirafe({
+    # req(data_list)
 
-    hor <- data_list()[[4]][[2]] #%>%
-      # filter(orientation == 'horizontal')
+    # hor <- data_list()[[4]][[2]] #|>
+    #   # filter(orientation == 'horizontal')
 
-    outer_hor_plot <- ggplot() +
-      # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-      geom_point(data = hor, aes(x = X, y = Y, group = ID)) +
-      theme_minimal() +
-      coord_fixed() #+
-      # coord_flip()
+    # outer_hor_plot <- ggplot() +
+    #   # geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+    #   # geom_point(data = hor, aes(x = X, y = Y, group = ID)) +
+    #   geom_sf_interactive(data = vert)
+    #   # theme_minimal() +
+    #   # coord_fixed() #+
+    #   # coord_flip()
     
-    outer_hor_plot
+    # outer_hor_plot
+
+    if (requireNamespace("sf",
+                     quietly = TRUE,
+                     versionCheck = c(op = ">=", version = "0.7-3"))) {
+  nc <- sf::st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
+  gg <- ggplot(nc) +
+    geom_sf_interactive(aes(fill = AREA, tooltip = c(NAME, NAME), data_id = NAME))
+  girafe(ggobj = gg)
+
+}
   })
 
 
@@ -763,8 +854,8 @@ data_list <- shiny::reactive({
   # #   material_output()
   # # })
   output$test <- shiny::renderPrint({
-    data_list()[[4]] %>%
-      filter(orientation == 'horizontal')
+    data_list()[[4]][[1]] #|>
+      # filter(orientation == 'horizontal')
   })
 
 
