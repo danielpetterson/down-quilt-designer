@@ -801,25 +801,35 @@ data_list <- shiny::reactive({
     #   # filter(orientation == 'vertical')
     
 
-    # outer_vert_plot <- ggplot() +
-    #   geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-    #   # geom_path(data = vert, aes(x = X, y = Y)) +
-    #   geom_sf_interactive(data = vert) #+
-    #   # theme_minimal() +
-    #   # coord_fixed() #+
-    #   # coord_flip()
-    
-    #   x <- girafe(ggobj = outer_vert_plot)
-    #   if( interactive() ) print(x)
-    if (requireNamespace("sf",
-                     quietly = TRUE,
-                     versionCheck = c(op = ">=", version = "0.7-3"))) {
-  nc <- sf::st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
-  gg <- ggplot(nc) +
-    geom_sf_interactive(aes(fill = AREA, tooltip = c(NAME, NAME), data_id = NAME))
-  girafe(ggobj = gg)
+  # Placeholder data
+  ids <- factor(c("1.1", "2.1", "1.2", "2.2", "1.3", "2.3"))
 
-}
+  values <- data.frame(
+    id = ids,
+    value = c(3, 3.1, 3.1, 3.2, 3.15, 5) )
+  positions <- data.frame(
+    id = rep(ids, each = 4),
+    x = c(2, 1, 1.1, 2.2, 1, 0, 0.3, 1.1, 2.2, 1.1, 1.2, 2.5, 1.1, 0.3,
+      0.5, 1.2, 2.5, 1.2, 1.3, 2.7, 1.2, 0.5, 0.6, 1.3),
+    y = c(-0.5, 0, 1, 0.5, 0, 0.5, 1.5, 1, 0.5, 1, 2.1, 1.7, 1, 1.5,
+      2.2, 2.1, 1.7, 2.1, 3.2, 2.8, 2.1, 2.2, 3.3, 3.2) )
+
+  vert <- merge(values, positions, by=c("id"))
+    
+    gg_poly_vert <- ggplot(vert, aes(x = x, y = y) ) +
+      geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
+      geom_polygon_interactive(
+        aes(
+          fill = value,
+          group = id,
+          tooltip = value,
+          data_id = id
+        )) +
+      theme_minimal() +
+      coord_fixed() #+
+      # coord_flip()
+
+    girafe(ggobj = gg_poly_vert)
   })
 
   output$outer_hor_plot <- renderGirafe({
@@ -838,15 +848,17 @@ data_list <- shiny::reactive({
     
     # outer_hor_plot
 
-    if (requireNamespace("sf",
-                     quietly = TRUE,
-                     versionCheck = c(op = ">=", version = "0.7-3"))) {
-  nc <- sf::st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
-  gg <- ggplot(nc) +
-    geom_sf_interactive(aes(fill = AREA, tooltip = c(NAME, NAME), data_id = NAME))
-  girafe(ggobj = gg)
+    gg_poly_hor <- ggplot(data_hor, aes(x = x, y = y) ) +
+      geom_polygon_interactive(
+        aes(
+          fill = value,
+          group = id,
+          tooltip = value,
+          data_id = id
+        )
+      )
+    girafe(ggobj = gg_poly_hor)
 
-}
   })
 
 
