@@ -29,7 +29,8 @@ library(sf)
 
 # Issues:
 # 100% baffles in either direction. Could consider offsetting by a tiny amount.
-# Final vertical polygon doesn't generate points
+# Works fine on rectangles. Needs to plot curves. Issue appears before outer_segmented_poly and for non-rectangles the distance between x values is not 1.
+
 
 
 # options(digits=2)
@@ -45,7 +46,7 @@ round_any = function(x, accuracy, f=round){f(x/ accuracy) * accuracy}
 design_accordion <- bslib::accordion_panel(
   "Design",# icon = bsicons::bs_icon("menu-app"),
   numericInput('maxDim','Longest Dimension (cm)', 210, min = 0),
-  numericInput('orientationSplitHeight','Baffle Orientation Change Height', 50, min = 0, max = 100),
+  numericInput('orientationSplitHeight','Baffle Orientation Change Height', 50, min = 0),
   numericInput('baffleHeight','Baffle Height (cm)', 2, min = 0),
   numericInput('verticalChamberHeight','Max Vertical Chamber Height (cm)', 2.5, min = 0),
   numericInput('verticalChamberWidth','Vertical Chamber Width (cm)', 15, min = 0),
@@ -253,11 +254,11 @@ server = function(input, output){
   
   # set up reactive dataframe with example data
   values <- shiny::reactiveValues()
-  values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
-                                  y = c(210, 210, 100, 0, 0))
+  # values$user_input <- data.frame(x = c(0, 71, 71, 50, 0),
+  #                                 y = c(210, 210, 100, 0, 0))
   
-  # values$user_input <- data.frame(x = c(0, 50, 50, 0),
-  #                                 y = c(100, 100, 0, 0))
+  values$user_input <- data.frame(x = c(0, 50, 50, 0),
+                                  y = c(100, 100, 0, 0))
   
   # add opposing points to user selected points
 all_selected_points_x <- shiny::reactive({
@@ -397,7 +398,7 @@ data_list <- shiny::reactive({
     p <- pi * (a + b) * (1 + 3 * h / (10 + sqrt((4 - 3 * h))))
 
     # Calculate length of chamber roof (half perimeter)
-    outer_poly$chamberRoofLength <- p / 2
+    outer_poly$chamberRoofLength <- round(p / 2, 2)
     # Calculate half ellipse area
     outer_poly$chamberUpperArea <- (pi * a * b) / 2
     # Calculate lower chamber area
@@ -546,43 +547,18 @@ data_list <- shiny::reactive({
       }
       outer_layer_df
       } else if (orientation == 'horizontal'){
-            # # Keep only the lowest value of X for each level of Y within each group
-            # start_points <- segmentized_poly |>
-            #   group_by(ID) |>
-            #   filter(X == min(X)) |>
-            #   ungroup()
-            # end_point_data <- outer_poly |> select("Y", "ID", "orientation", "chamberRoofLength")
-            # start_points_crl <- left_join(start_points, end_point_data, by = c("ID", "Y", "orientation"))
-            # # the start is the leftmost x value of the subpolygon
-            # start <- 0
-            # for (i in 1:max(start_points_crl$ID)){
-            #   end_points <- start_points_crl |>
-            #     filter(ID == i) |>
-            #     mutate(X = chamberRoofLength + start)
-            #   start_points <- end_points |>
-            #     mutate(X = X - chamberRoofLength)
-      
-            #   end <- max(end_points$X)
-      
-            #   outer_segmented_poly <- rbind(outer_segmented_poly, end_points, start_points)
-            #   start <- end
-            #   outer_poly_update <- outer_segmented_poly
-            # }
       # Keep only the highest value of Y within each group
       start_points1 <- segmentized_poly |>
         group_by(ID) |>
         filter(Y == max(Y)) |>
         ungroup()
-      # outer_segmented_poly <- rbind(outer_segmented_poly, start_points[ID==1])
       end_point_data <- outer_poly |> select("X", "ID", "orientation", "chamberRoofLength")
       start_points_crl <- right_join(start_points1, end_point_data, by = c("ID", "X", "orientation"))
       # the start is the uppermost y value of the subpolygon
       start <- input$orientationSplitHeight
-      # start <- max(start_points$Y)
       # Add starting horizontal line at orientation split height
       outer_segmented_poly <- start_points_crl |> filter(ID==1) |> mutate(Y=start)
       for (i in 1:max(start_points_crl$ID)){
-        # for (i in 1:1){
         end_points <- start_points_crl |>
           filter(ID == i) |>
           mutate(Y = max(Y) - chamberRoofLength)
@@ -602,31 +578,38 @@ data_list <- shiny::reactive({
         X=double(),
         Y=double()
     )
-
-      # for (i in 1:max(outer_poly_update$ID)){
-        for (i in 2:2){
+    first_line <- c()
+      for (i in 1:max(outer_poly_update$ID)){
         poly_points <- outer_poly_update |>
           filter(ID == i) |>
           select(ID, X, Y, orientation) |>
           arrange(X)
+        if (length(first_line)==0){
         # first line is one closer to baffle orientation split
         ##first line is ascending X
         first_line <- poly_points |>
           filter(Y == max(Y)) |>
-          filter(X == max(X) | X == min(X)) 
+          filter(X == max(X) | X == min(X))
+          } else {
+        first_line <- outer_poly_update |>
+          filter(ID == (i - 1)) |>
+          select(ID, X, Y, orientation) |>
+          filter(Y == min(Y)) |>
+          filter(X == max(X) | X == min(X))
+        first_line$ID <- i
+        }
         ##reverse order of points
         second_line <- poly_points |>
           filter(Y == min(Y)) |>
           filter(X == max(X) | X == min(X)) |>
           arrange(desc(X)) 
+
         ##interim points right
         right_threshold <- min(max(first_line$X), max(second_line$X))
         interim_points_right <- poly_points |>
           filter(Y > min(Y) & Y < max(Y)) |>
           filter(X >= right_threshold) |>
           arrange(desc(Y))
-
-        # lower_bound <- min(Y)
 
         poly_coords <- rbind(
           first_line,
@@ -637,8 +620,11 @@ data_list <- shiny::reactive({
         outer_layer_df <- rbind(outer_layer_df, poly_coords)
       }
       # outer_layer_df <- as.data.frame(outer_segmented_poly)
-      outer_layer_df <- as.data.frame(end_points)
-      # outer_layer_df <- as.data.frame(outer_layer_df)
+      # outer_layer_df <- as.data.frame(outer_segmented_poly)
+      # outer_layer_df <- as.data.frame(start_points1)
+      # outer_layer_df <- as.data.frame(end_point_data)
+      # outer_layer_df <- as.data.frame(start_points_crl)
+      outer_layer_df <- as.data.frame(outer_layer_df)
       }
     return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_layer_df))
   }
@@ -651,8 +637,9 @@ data_list <- shiny::reactive({
     rbind(vert_list[[1]], hor_list[[1]]),
     rbind(vert_list[[2]], hor_list[[2]]),
     rbind(vert_list[[3]], hor_list[[3]]),
-    # rbind(vert_list[[4]], hor_list[[4]])
-    hor_list[[4]]
+    rbind(vert_list[[4]], hor_list[[4]])
+    # vert_list[[4]]
+    # hor_list[[4]]
   )
 
   })
@@ -843,7 +830,7 @@ data_list <- shiny::reactive({
         aes(
           # fill = Value,
           group = ID,
-          # tooltip = Value,
+          tooltip = ID,
           data_id = ID
         )) +
       theme_minimal() +
@@ -861,12 +848,12 @@ data_list <- shiny::reactive({
     
     gg_poly_hor <- ggplot(hor, aes(x = X, y = Y) ) +
       geom_vline(xintercept = 0, linetype = "dotted", linewidth = 2) +
-      # geom_polygon_interactive(
-        geom_point_interactive(
+      geom_polygon_interactive(
+        # geom_point_interactive(
         aes(
           # fill = Value,
           group = ID,
-          # tooltip = Value,
+          tooltip = ID,
           data_id = ID
         )) +
       theme_minimal() +
