@@ -6,26 +6,18 @@ library(ggiraph)
 library(dplyr)
 library(sf)
 
-
-
-##TODO:
-# (gg)Plot subpolygons with pointer displaying info about:
-# - Area
-# - Volume
-# - Grams of down needed
-
 # Info panel with expected weight and total down, baffle material needed
 ##TODO: 
 #Verify FP metric conversion 
 #Display measurements in table
-# Fix final vertical scaling. Issue arises when diagonal line cuts through multiple subpolygons.
+#Fix final vertical scaling. Issue arises when diagonal line cuts through multiple subpolygons.
 #Test brand.yml
 
 # list of dataframes includes:
 # 1 segmentized_poly which is the dataframe containing all inner layer polygons
-# 2 outer_poly contains all inner layer polygons with chamber roof length calculations
-# 3 cross section plot data
-# 4 outer_poly_df. DF of polygon points grouped by chamber/orientation. For cutting dimensions.
+# 2 cross section plot data
+# 3 outer_poly_df. DF of polygon points grouped by chamber/orientation. As DF
+# 4 Set of SF objects where each SF object (inner, vert and hor) has an st_buffer to allow for seam allowance. Can show coordinate points, area and weight.
 
 # Issues:
 # 100% baffles in either direction. Could consider offsetting by a tiny amount.
@@ -403,8 +395,10 @@ data_list <- shiny::reactive({
     outer_poly$chamberUpperArea <- (pi * a * b) / 2
     # Calculate lower chamber area
     outer_poly$chamberLowerArea <- outer_poly$segmentWidth * input$baffleHeight
-    # Area of each slice (defined by st_segmentize as 1cm so area == volume per slice)
+    # Area of each slice (defined by st_segmentize as 1cm so area == volume per slice (cm^3))
     outer_poly$sliceArea <- outer_poly$chamberUpperArea + outer_poly$chamberLowerArea
+
+
 
     if (orientation == "vertical"){
       df <- outer_poly |>
@@ -477,6 +471,12 @@ data_list <- shiny::reactive({
       orientation=character(),
       chamberRoofLength=double()
   )
+    
+##TODO:
+# (gg)Plot subpolygons with pointer displaying info about:
+# - Area
+# - Volume
+# - Grams of down needed
 
     # Outer layer dimensions
     if (orientation == 'vertical'){
@@ -619,14 +619,14 @@ data_list <- shiny::reactive({
 
         outer_layer_df <- rbind(outer_layer_df, poly_coords)
       }
-      # outer_layer_df <- as.data.frame(outer_segmented_poly)
+      # outer_layer_df <- as.data.frame(outer_poly)
       # outer_layer_df <- as.data.frame(outer_segmented_poly)
       # outer_layer_df <- as.data.frame(start_points1)
       # outer_layer_df <- as.data.frame(end_point_data)
       # outer_layer_df <- as.data.frame(start_points_crl)
       outer_layer_df <- as.data.frame(outer_layer_df)
       }
-    return(list(segmentized_poly, outer_poly, cross_section_plot_data, outer_layer_df))
+    return(list(segmentized_poly, cross_section_plot_data, outer_layer_df))
   }
 
   # Cross-section plot data may need to be imported separately 
@@ -634,12 +634,11 @@ data_list <- shiny::reactive({
   hor_list <- define_chambers(hor, 'horizontal')
 
   list(
-    rbind(vert_list[[1]], hor_list[[1]]),
-    rbind(vert_list[[2]], hor_list[[2]]),
-    rbind(vert_list[[3]], hor_list[[3]]),
-    rbind(vert_list[[4]], hor_list[[4]])
-    # vert_list[[4]]
-    # hor_list[[4]]
+    rbind(vert_list[[1]], hor_list[[1]]), # Inner plot
+    rbind(vert_list[[2]], hor_list[[2]]), # Cross-section data for inner plot
+    # rbind(vert_list[[3]], hor_list[[3]]) # Outer layer plots
+    # vert_list[[3]]
+    hor_list[[3]]
   )
 
   })
@@ -802,7 +801,7 @@ data_list <- shiny::reactive({
       theme_minimal() +
       coord_fixed() 
     
-      data <- data_list()[[3]]
+      data <- data_list()[[2]]
     
       # add each baffle cross-section
       for (i in 1:length(data))
@@ -821,7 +820,7 @@ data_list <- shiny::reactive({
   output$outer_vert_plot <- renderGirafe({
     req(data_list)
 
-    vert <- data_list()[[4]] |>
+    vert <- data_list()[[3]] |>
       filter(orientation == "vertical")
     
     gg_poly_vert <- ggplot(vert, aes(x = X, y = Y) ) +
@@ -843,7 +842,7 @@ data_list <- shiny::reactive({
   output$outer_hor_plot <- renderGirafe({
     req(data_list)
 
-    hor <- data_list()[[4]] |>
+    hor <- data_list()[[3]] |>
       filter(orientation == "horizontal")
     
     gg_poly_hor <- ggplot(hor, aes(x = X, y = Y) ) +
@@ -869,7 +868,7 @@ data_list <- shiny::reactive({
   # #   material_output()
   # # })
   output$test <- shiny::renderPrint({
-    data_list()[[4]] #|>
+    data_list()[[3]] #|>
       # filter(orientation == 'horizontal')
   })
 
