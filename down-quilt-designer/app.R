@@ -165,8 +165,7 @@ specs_name <- c(
   "Outer Layer Area",
   "Outer Layer Weight",
   "Volume",
-  "Grams of Down",
-  "Estimated Weight"
+  "Grams of Down"
 )
 
 for (i in 1:length(specs_name)) {
@@ -176,6 +175,11 @@ for (i in 1:length(specs_name)) {
     # theme = "purple",
   )
 }
+
+spec_weight <- bslib::value_box(
+  title = "Estimated Weight (Grams)",
+  value = "0"
+)
 
 # UI layout
 ui <- bslib::page_navbar(
@@ -232,8 +236,8 @@ bslib::nav_panel(
   title = "Specifications",
     layout_column_wrap(
       width = "250px",
-      !!!specs
-              )
+      !!!specs),
+      spec_weight
                 )
 
 )
