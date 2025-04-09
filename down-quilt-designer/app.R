@@ -100,11 +100,6 @@ card2 <- bslib::card(
   verbatimTextOutput("test")
 )
 
-card3 <- bslib::card(
-  bslib::card_header("Test Output"),
-  verbatimTextOutput("cross_section_plot_data")
-)
-
 inner_card <- bslib::card(
   plotOutput("inner_plot")
 )
@@ -171,8 +166,7 @@ specs_name <- c(
 for (i in 1:length(specs_name)) {
   specs[[i]] <- bslib::value_box(
     title = specs_name[i],
-    value = "123",
-    # theme = "purple",
+    value = "123"
   )
 }
 
@@ -209,20 +203,14 @@ bslib::nav_panel(
   # title = "",
     nav_panel(
       "Inner Layer",
-      # card_title("Inner Layer"),
-      inner_card,
-                # card3
-      # inner_plot
+      inner_card
     ),
     nav_panel(
       "Outer Vertical",
-
-      # card_title("Outer Vertical Layer"),
       outer_vert_card
     ),
     nav_panel(
       "Outer Horizontal",
-      # card_title("Outer Horizontal Layer"),
       outer_hor_card
     ),
     nav_panel(
