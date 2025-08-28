@@ -1,7 +1,6 @@
 library(shiny)
 library(bslib)
 library(bsicons)
-library(shinyvalidate)
 library(ggplot2)
 library(ggiraph)
 library(dplyr)
@@ -9,26 +8,29 @@ library(sf)
 library(stats)
 library(gt)
 
+options(shiny.sanitize.errors = FALSE)
+
 ## TODO:
 # Test brand.yml
 # Validate that baffle height is less than or equal to max chamber heights
 
 # Issues:
-# gt error message
 
-
-# Functions
+# Helper Functions
 #---------------------------
+
+# Rounding for input due to inaccuracy of clicking
 round_any <- function(x, accuracy, f = round) {
   f(x / accuracy) * accuracy
 }
 
-# gt_output <- function(outputId) {
-#   # Ensure that the shiny package is available
-#   rlang::check_installed("shiny", "to use `gt_output()`.")
+# Fixes issue with gt package where input (where you click on the table)
+# and output (what is in the table is created with the same call
+gt_output <- function(outputId) {
+  rlang::check_installed("shiny", "to use `gt_output()`.")
 
-#   shiny::htmlOutput(outputId, class = "gt_shiny")
-# }
+  shiny::htmlOutput(outputId)
+}
 
 #---------------------------
 
@@ -91,7 +93,6 @@ plot_input_card <- bslib::card(
   ),
   # button to remove last vertex
   actionButton("rem_point", "Remove Last Point"),
-  # actionButton("rem_all_points", "Clear")
 )
 
 selected_points_card <- bslib::card(
@@ -137,8 +138,6 @@ plot_input_card <- bslib::card(
       nullOutside = TRUE
     )
   ),
-
-  # actionButton("rem_all_points", "Clear")
 )
 
 # UI layout
@@ -165,9 +164,7 @@ ui <- bslib::page_navbar(
   bslib::nav_panel(
     title = "Output Dimensions",
     navset_card_tab(
-      # height = 1800,
       full_screen = TRUE,
-      # title = "",
       nav_panel(
         "Inner Layer",
         inner_card
@@ -199,51 +196,16 @@ ui <- bslib::page_navbar(
 #---------------------------
 server <- function(input, output) {
   #---------------------------
-  # Input Validation
-  #---------------------------
-  # Instantiate InputValidator object
-  iv <- InputValidator$new()
-
-  # Add validation rules and enable
-  iv$add_rule("maxDim", sv_numeric())
-  iv$add_rule("maxDim", sv_gt(0))
-  iv$add_rule("orientationSplitHeight", sv_numeric())
-  iv$add_rule("baffleHeight", sv_numeric())
-  iv$add_rule("baffleHeight", sv_gte(0))
-  iv$add_rule("verticalChamberHeight", sv_numeric())
-  iv$add_rule("verticalChamberHeight", sv_gt(0))
-  iv$add_rule("verticalChamberWidth", sv_numeric())
-  iv$add_rule("verticalChamberWidth", sv_gt(0))
-  iv$add_rule("horizontalChamberHeight", sv_numeric())
-  iv$add_rule("horizontalChamberHeight", sv_gte(0))
-  iv$add_rule("horizontalChamberWidth", sv_numeric())
-  iv$add_rule("horizontalChamberWidth", sv_gt(0))
-  iv$add_rule("seamAllowance", sv_numeric())
-  iv$add_rule("seamAllowance", sv_gte(0))
-
-  iv$add_rule("FP", sv_numeric())
-  iv$add_rule("FP", sv_gte(500))
-  iv$add_rule("overstuff", sv_numeric())
-  iv$add_rule("innerWeight", sv_numeric())
-  iv$add_rule("innerWeight", sv_gt(0))
-  iv$add_rule("outerWeight", sv_numeric())
-  iv$add_rule("outerWeight", sv_gt(0))
-  iv$add_rule("baffleWeight", sv_numeric())
-  iv$add_rule("baffleWeight", sv_gt(0))
-
-  iv$enable()
-
-
-  #---------------------------
   # Coordinate Inputs
   #---------------------------
   values <- shiny::reactiveValues()
 
-  # values$user_input <- data.frame(
-  #   x = c(0, 71, 71, 50, 0),
-  #   y = c(210, 210, 100, 0, 0)
-  # )
+  values$user_input <- data.frame(
+    x = c(0, 71, 71, 50, 0),
+    y = c(210, 210, 100, 0, 0)
+  )
 
+  # For validation
   values$user_input <- data.frame(
     x = c(0, 50, 50, 0),
     y = c(100, 100, 0, 0)
@@ -376,7 +338,7 @@ server <- function(input, output) {
             coords[(idx3):nrow(coords), ]
           )
         }
-
+        # Form polygon from coordinates
         altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
       }
 
@@ -464,6 +426,7 @@ server <- function(input, output) {
       return(poly)
     }
 
+    # Split polygon into subpolygons(chambers) by grid
     inner_vert_segmented <- st_intersection(inner_vert_grid, vert_simple)
     inner_vert_segmented <- mirror_vert_chambers(inner_vert_segmented)
 
@@ -474,53 +437,90 @@ server <- function(input, output) {
 
     outer_hor_segmented <- st_intersection(outer_hor_grid, outer_hor_simple)
 
-    # Function to calculate lengths of vertical/horizontal lines in an sf object
-    calculate_baffle_lengths <- function(sf_object, orientation) {
-      # Initialize a vector to store line lengths
-      lengths_vec <- numeric(0)
-      # Extract coordinates
-      coords <- st_coordinates(sf_object)
+    # Extract vertices of an sf polygon
+    extract_polygon_vertices <- function(sf_poly) {
+      vertices <- st_cast(st_geometry(sf_poly), "POINT")
+      vertices <- vertices[1:length(vertices) - 1]
+      sf_vertices <- st_sf(
+        id = seq_along(vertices),
+        x = round(st_coordinates(vertices)[, 1], 1),
+        y = round(st_coordinates(vertices)[, 2], 1),
+        geometry = vertices
+      )
 
-      # If MULTIPOLYGON, we need to handle multiple polygons
-      geom_type <- st_geometry_type(sf_object, by_geometry = TRUE)[1]
-      if (geom_type %in% c("MULTIPOLYGON", "POLYGON")) {
-        # Split coordinates by polygon (L1) and ring (L2) if MULTIPOLYGON
-        coords_list <- split(data.frame(coords), list(coords[, "L1"], coords[, "L2"]))
+      # Create tooltip labels with coordinates
+      sf_vertices$tooltip <- paste0("(", sf_vertices$x, ", ", sf_vertices$y, ")")
 
-        for (ring in coords_list) {
-          # Get x and y coordinates
-          x <- ring$X
-          y <- ring$Y
-
-          if (orientation == "vertical") {
-            # Check each pair of consecutive points
-            for (i in 1:(length(x) / 2)) {
-              # If x-coordinates are equal (vertical line)
-              if (abs(x[i] - x[i + 1]) < .Machine$double.eps^0.5) {
-                # Calculate length as absolute difference in y-coordinates
-                length <- abs(y[i] - y[i + 1])
-                lengths_vec <- c(lengths_vec, length)
-              }
-            }
-          } else if (orientation == "horizontal") {
-            for (i in length(y) / 2:length(y)) {
-              if (abs(y[i] - y[i + 1]) < .Machine$double.eps^0.5) {
-                length <- abs(x[i] - x[i + 1])
-                lengths_vec <- c(lengths_vec, length)
-              }
-            }
-          }
-        }
-        if (orientation == "vertical") {
-          lengths_vec <- c(rev(lengths_vec), lengths_vec[2:length(lengths_vec)])
-        }
-      }
-
-      return(lengths_vec)
+      return(sf_vertices)
     }
 
-    hor_baffle_lengths <- calculate_baffle_lengths(inner_hor_segmented, "horizontal")
-    vert_baffle_lengths <- calculate_baffle_lengths(inner_vert_segmented, "vertical")
+    inner_seam_vertices <- extract_polygon_vertices(inner_seam)
+    outer_vert_simple_seam_vertices <- extract_polygon_vertices(outer_vert_simple_seam)
+    outer_hor_simple_seam_vertices <- extract_polygon_vertices(outer_hor_simple_seam)
+
+
+    # Extract vertices of individual chambers and remove duplicates for plotting
+    extract_chamber_vertices <- function(sf_object) {
+      # Apply function to each polygon and coalesce results
+      vertices_list <- lapply(seq_len(length(sf_object)), function(i) {
+        extract_polygon_vertices(sf_object[i, ])
+      })
+      vertices <- bind_rows(vertices_list)
+
+      # Remove duplicate vertices based on x, y coordinates
+      vertices_formatted <- vertices |>
+        distinct(x, y, .keep_all = TRUE) |>
+        mutate(tooltip = paste0("(", x, ", ", y, ")"))
+
+      return(vertices_formatted)
+    }
+
+    inner_chamber_vertices <- rbind(
+      extract_chamber_vertices(inner_vert_segmented),
+      extract_chamber_vertices(inner_hor_segmented)
+    )
+
+    outer_vert_chamber_vertices <- extract_chamber_vertices(outer_vert_segmented)
+    outer_hor_chamber_vertices <- extract_chamber_vertices(outer_hor_segmented)
+
+
+    # Function to calculate lengths of vertical/horizontal lines in an sfc
+    calculate_baffle_lengths <- function(sf_vertices, reference_axis) {
+      # Extract coordinates from sf object
+      coords <- st_coordinates(sf_vertices)
+      if (reference_axis == "Y") {
+        data <- data.frame(other = coords[, 1], reference = coords[, 2])
+        data <- data |>
+          # Remove furthest baffle lines since this function is served by outer layer fabric
+          slice_max(order_by = other, n = nrow(data) - 2) |>
+          slice_min(order_by = other, n = nrow(data) - 4) |>
+          mutate(other = round(other, 2))
+      } else if (reference_axis == "X") {
+        data <- data.frame(reference = coords[, 1], other = coords[, 2]) |>
+          # Remove rows where x is approximately 0 (within a tolerance)
+          filter(abs(reference) > 1e-10)
+        data <- data |>
+          # Remove lowest horizontal line. Covered by outer fabric layer.
+          slice_max(order_by = other, n = nrow(data) - 2) |>
+          mutate(other = round(other, 2))
+      }
+
+      # Group by other and calculate differences in reference for points with same other value
+      length_by_baffle <- data %>%
+        group_by(other) %>%
+        summarise(baffle_length = if (n() > 1) abs(diff(reference)) else NA_real_) %>%
+        filter(!is.na(baffle_length))
+
+      total_baffle_length <- sum(length_by_baffle$baffle_length)
+
+
+      return(total_baffle_length)
+    }
+
+
+    hor_baffle_lengths <- calculate_baffle_lengths(outer_hor_chamber_vertices, "X")
+    vert_baffle_lengths <- calculate_baffle_lengths(outer_vert_chamber_vertices, "Y")
+
 
     # Calculate base area/volume
     # Extrude 2D chambers to 3D shapes (Uses area of polygon to optimise accuracy with little overhead)
@@ -699,7 +699,10 @@ server <- function(input, output) {
     # IDFL paper suggests using 28.77 for inch/cm conversions
     # Samples are usually 28.4/28.5 or 30 grams depending on type of test
     # Volume / FP = weight
-    FP_metric <- (input$FP * 16.387064) / 28.34952
+    FP_metric <- (input$FP * 16.387064) / 28.349525440835
+    average_loft_vert <- sum(vert_chamber_volumes$total_volume) / st_area(vert_simple)
+    average_loft_hor <- sum(hor_chamber_volumes$total_volume) / st_area(hor_simple)
+    # average_loft <- 1
 
 
     # ---Area---
@@ -719,6 +722,7 @@ server <- function(input, output) {
     grams_down_adj <- grams_down * (1 + (input$overstuff / 100))
     total_weight <- sum(inner_layer_weight, outer_layer_weight, baffle_material_weight, grams_down_adj)
 
+
     # Specification data to present
     spec_data <- data.frame(
       Metric = c(
@@ -732,6 +736,8 @@ server <- function(input, output) {
         "Baffle Material Weight",
         "Volume",
         "Grams of Down",
+        "Average Loft Vertical Chambers",
+        "Average Loft Horizontal Chambers",
         "Total Weight"
       ),
       Value = c(
@@ -745,6 +751,8 @@ server <- function(input, output) {
         baffle_material_weight,
         volume,
         grams_down_adj,
+        average_loft_vert,
+        average_loft_hor,
         total_weight
       ),
       Unit = c(
@@ -758,6 +766,8 @@ server <- function(input, output) {
         "grams",
         "cm^3",
         "grams",
+        "cm",
+        "cm",
         "grams"
       )
     )
@@ -768,54 +778,7 @@ server <- function(input, output) {
     ### -------------------------------------------------------------
     # Plotting Data
 
-    # Extract vertices of an sf polygon
-    extract_polygon_vertices <- function(sf_poly) {
-      vertices <- st_cast(st_geometry(sf_poly), "POINT")
-      vertices <- vertices[1:length(vertices) - 1]
-      sf_vertices <- st_sf(
-        id = seq_along(vertices),
-        x = round(st_coordinates(vertices)[, 1], 1),
-        y = round(st_coordinates(vertices)[, 2], 1),
-        geometry = vertices
-      )
 
-      # Create tooltip labels with coordinates
-      sf_vertices$tooltip <- paste0("(", sf_vertices$x, ", ", sf_vertices$y, ")")
-
-      return(sf_vertices)
-    }
-
-    inner_seam_vertices <- extract_polygon_vertices(inner_seam)
-    outer_vert_simple_seam_vertices <- extract_polygon_vertices(outer_vert_simple_seam)
-    outer_hor_simple_seam_vertices <- extract_polygon_vertices(outer_hor_simple_seam)
-
-
-    # Vertices of individual chambers
-    extract_chamber_vertices <- function(sf_object) {
-      # Apply function to each polygon and coalesce results
-      vertices_list <- lapply(seq_len(length(sf_object)), function(i) {
-        extract_polygon_vertices(sf_object[i, ])
-      })
-      vertices <- bind_rows(vertices_list)
-
-      # Remove duplicate vertices based on x, y coordinates
-      vertices_formatted <- vertices |>
-        distinct(x, y, .keep_all = TRUE) |>
-        mutate(tooltip = paste0("(", x, ", ", y, ")"))
-
-      return(vertices_formatted)
-    }
-
-    inner_chamber_vertices <- rbind(
-      extract_chamber_vertices(inner_vert_segmented),
-      extract_chamber_vertices(inner_hor_segmented)
-    )
-
-    outer_vert_chamber_vertices <- extract_chamber_vertices(outer_vert_segmented)
-    outer_hor_chamber_vertices <- extract_chamber_vertices(outer_hor_segmented)
-
-    # Number of grams needed to fill chambers adjusted for over/underfill
-    grams_down_adj <- (vert_chamber_volumes$total_volume / FP_metric) * (1 + (input$overstuff / 100))
 
 
     inner_vert_segmented <- st_sf(inner_vert_segmented)
@@ -823,15 +786,12 @@ server <- function(input, output) {
       "Volume: ", round(vert_chamber_volumes$total_volume, 2), " cm^3",
       "<br>Down Required: ", round((vert_chamber_volumes$total_volume / FP_metric) * (1 + (input$overstuff / 100)), 2), " grams"
     )
-    inner_vert_segmented$tooltip <- 1
 
     inner_hor_segmented <- st_sf(inner_hor_segmented)
     inner_hor_segmented$tooltip <- paste0(
       "Volume: ", round(hor_chamber_volumes$total_volume, 2), " cm^3",
       "<br>Down Required: ", round((hor_chamber_volumes$total_volume / FP_metric) * (1 + (input$overstuff / 100)), 2), " grams"
     )
-    inner_hor_segmented$tooltip <- 1
-
 
     # Named list/pseudo-dictionary of output data
     list(
@@ -911,7 +871,6 @@ server <- function(input, output) {
   # })
 
   output$inner_plot <- renderGirafe({
-    req(iv$is_valid())
     req(data_list)
     inner_simple <- data_list()$inner_layer[[1]]
     with_seam <- data_list()$inner_layer[[2]]
@@ -944,7 +903,6 @@ server <- function(input, output) {
   })
 
   output$outer_vert_plot <- renderGirafe({
-    req(iv$is_valid())
     req(data_list)
     vert_simple <- data_list()$outer_layer_vert[[1]]
     with_seam <- data_list()$outer_layer_vert[[2]]
@@ -973,7 +931,6 @@ server <- function(input, output) {
   })
 
   output$outer_hor_plot <- renderGirafe({
-    req(iv$is_valid())
     req(data_list)
     hor_simple <- data_list()$outer_layer_hor[[1]]
     with_seam <- data_list()$outer_layer_hor[[2]]
@@ -1000,7 +957,6 @@ server <- function(input, output) {
   })
 
   output$specifications <- gt::render_gt({
-    req(iv$is_valid())
     validate(
       need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
       need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height.")
@@ -1013,6 +969,7 @@ server <- function(input, output) {
         align = "right",
         columns = Value
       ) |>
+      cols_width(Metric ~ px(400)) |>
       tab_footnote(
         footnote = paste0("Adjusted to include ", input$overfill, "% overstuff."),
         locations = cells_stub(rows = "Grams of Down")
