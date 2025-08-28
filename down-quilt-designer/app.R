@@ -308,7 +308,7 @@ server <- function(input, output) {
 
     # Adds baffle wall height to the outermost vertical and horizontal chambers
     add_baffle_wall_allowance <- function(sf_poly, chamber_orientation) {
-      coords <- st_coordinates(sf_poly)
+      coords <- st_coordinates(sf_poly)[, c("X", "Y")]
       # Add outer chamber wall
       if (chamber_orientation == "vertical") {
         coords[, "X"] <- ifelse(coords[, "X"] < 0, coords[, "X"] - input$baffleHeight, coords[, "X"] + input$baffleHeight)
@@ -338,6 +338,31 @@ server <- function(input, output) {
             coords[(idx3):nrow(coords), ]
           )
         }
+
+        # # Create new points: same x, y - baffle_height
+        # new_points <- lapply(seq_along(min_y_indices), function(i) {
+        #   c(coords[min_y_indices[i], "X"], min_y - input$baffleHeight)
+        # })
+
+        # # Convert new_points list to matrix for rbind
+        # new_points <- do.call(rbind, new_points)
+
+
+        # # Determine insertion point (after the last min_y point)
+        # insert_after <- min(min_y_indices)
+
+        # # Combine original and new points
+        # if (insert_after < nrow(coords)) {
+        #   new_coords <- rbind(
+        #     coords[1:insert_after, ],
+        #     new_points,
+        #     coords[(insert_after + 1):nrow(coords), ]
+        #   )
+        # } else {
+        #   # If min_y points are at the end, append new points
+        #   new_coords <- rbind(coords, new_points)
+        # }
+
         # Form polygon from coordinates
         altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
       }
@@ -349,11 +374,16 @@ server <- function(input, output) {
     # Add fabric to outer layer to cover outer edge walls if checkbox selected
     if (input$baffleWallExtension) {
       outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "vertical")
+      # if (input$orientationSplitHeight == 0) {
+      #   outer_vert_extend <- add_baffle_wall_allowance(outer_vert_extend, "horizontal")
+      # }
       outer_hor_extend <- add_baffle_wall_allowance(outer_hor_simple, "horizontal")
     } else {
       outer_vert_extend <- outer_vert_simple
       outer_hor_extend <- outer_hor_simple
     }
+
+    test <- st_coordinates(outer_vert_extend)
 
     # Add seam allowance w/ non-rounded vertices
     inner_seam <- st_buffer(inner, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
@@ -597,7 +627,7 @@ server <- function(input, output) {
         # Width of chamber upper / Length of curve of the semi-ellipse chamber upper
         outer_chamber_widths <- extract_lengths(sf_obj_outer, reference_axis)
         if (reference_axis == "Y") {
-          outer_chamber_widths$reference_vals <- outer_chamber_widths$reference_vals + input$orientationSplitHeight
+          outer_chamber_widths$reference_vals <- outer_chamber_widths$reference_vals + split_height
         }
 
         # Join inner and outer widths to a single dataframe
@@ -702,7 +732,6 @@ server <- function(input, output) {
     FP_metric <- (input$FP * 16.387064) / 28.349525440835
     average_loft_vert <- sum(vert_chamber_volumes$total_volume) / st_area(vert_simple)
     average_loft_hor <- sum(hor_chamber_volumes$total_volume) / st_area(hor_simple)
-    # average_loft <- 1
 
 
     # ---Area---
@@ -959,7 +988,9 @@ server <- function(input, output) {
   output$specifications <- gt::render_gt({
     validate(
       need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
-      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height.")
+      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
+      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
     )
 
     spec_data <- data_list()$specifications
