@@ -12,7 +12,8 @@ options(shiny.sanitize.errors = FALSE)
 
 ## TODO:
 # Test brand.yml
-# Validate that baffle height is less than or equal to max chamber heights
+# Deactivate adding chambers if fully vertical or horizontal
+# Show nothing if fully horizontal
 
 # Issues:
 
@@ -40,9 +41,10 @@ test <- 1
 # Frontend
 #---------------------------
 design_accordion <- bslib::accordion_panel(
-  "Design", # icon = bsicons::bs_icon("menu-app"),
+  "Design",
+  icon = bsicons::bs_icon("grid"),
   numericInput("maxDim", "Longest Dimension (cm)", 210, min = 0),
-  numericInput("orientationSplitHeight", "Baffle Orientation Change Height", 50, min = 0.5),
+  numericInput("orientationSplitHeight", "Baffle Orientation Change Height", 200, min = 0.5),
   numericInput("baffleHeight", "Baffle Height (cm)", 2, min = 0),
   numericInput("verticalChamberHeight", "Max Vertical Chamber Height (cm)", 2.5, min = 0),
   numericInput("verticalChamberWidth", "Vertical Chamber Width (cm)", 15, min = 0),
@@ -53,11 +55,12 @@ design_accordion <- bslib::accordion_panel(
 )
 
 materials_accordion <- bslib::accordion_panel(
-  "Materials", # icon = bsicons::bs_icon("sliders"),
-  numericInput("FP", "Fill Power", 750, min = 500, max = 1000, step = 50),
-  numericInput("overstuff", "% Overstuff", 10),
-  numericInput("innerWeight", "Inner Fabric Weight (gsm)", 50, min = 0),
-  numericInput("outerWeight", "Outer Fabric Weight (gsm)", 50, min = 0),
+  "Materials",
+  icon = bsicons::bs_icon("sliders"),
+  numericInput("FP", "Fill Power", 800, min = 500, max = 1000, step = 50),
+  numericInput("overstuff", "% Overstuff", 20),
+  numericInput("innerWeight", "Inner Fabric Weight (gsm)", 35, min = 0),
+  numericInput("outerWeight", "Outer Fabric Weight (gsm)", 35, min = 0),
   numericInput("baffleWeight", "Baffle Material Weight (gsm)", 25, min = 0)
 )
 
@@ -166,22 +169,30 @@ ui <- bslib::page_navbar(
     navset_card_tab(
       full_screen = TRUE,
       nav_panel(
+        shiny::icon("circle-info"),
+        markdown("Info placeholder"),
+        card2,
+      ),
+      nav_panel(
         "Inner Layer",
         inner_card
       ),
       nav_panel(
         "Outer Vertical",
-        outer_vert_card
+        # Show card only if the design is not only horizontal chambers
+        conditionalPanel(
+          "!output.full_horizontal",
+          outer_vert_card
+        )
       ),
       nav_panel(
         "Outer Horizontal",
-        outer_hor_card
+        # Show card only if the design is not only vertical chambers
+        conditionalPanel(
+          "!output.full_vertical",
+          outer_hor_card
+        )
       ),
-      nav_panel(
-        shiny::icon("circle-info"),
-        markdown("Info placeholder"),
-        card2,
-      )
     ),
   ),
   bslib::nav_panel(
@@ -205,11 +216,24 @@ server <- function(input, output) {
     y = c(210, 210, 100, 0, 0)
   )
 
-  # For validation
-  values$user_input <- data.frame(
-    x = c(0, 50, 50, 0),
-    y = c(100, 100, 0, 0)
-  )
+  # # For validation
+  # values$user_input <- data.frame(
+  #   x = c(0, 50, 50, 0),
+  #   y = c(100, 100, 0, 0)
+  # )
+
+  # Reactive values for conditional output of outer layer plots
+  output$full_horizontal <- reactive({
+    max(values$user_input$y) == input$orientationSplitHeight
+  })
+  output$full_vertical <- reactive({
+    input$orientationSplitHeight == 0
+  })
+
+  outputOptions(output, "full_horizontal", suspendWhenHidden = FALSE)
+  outputOptions(output, "full_vertical", suspendWhenHidden = FALSE)
+
+
 
   # Add opposing points to user selected points
   all_selected_points_x <- shiny::reactive({
@@ -245,7 +269,7 @@ server <- function(input, output) {
     if (input$orientationSplitHeight == 0) {
       split_height <- 0.00001
     } else if (input$orientationSplitHeight >= max(points$y)) {
-      split_height <- max(points$y) - 0.5
+      split_height <- max(points$y) - 0.00001
     } else {
       split_height <- input$orientationSplitHeight
     }
@@ -255,6 +279,7 @@ server <- function(input, output) {
       c(-max(points$x), max(points$x), max(points$x), -max(points$x), -max(points$x)),
       c(max(points$y), max(points$y), split_height, split_height, max(points$y))
     ))))
+    test <- vert_bbox
 
     hor_bbox <- st_sfc(st_polygon(list(cbind(
       c(-max(points$x), max(points$x), max(points$x), -max(points$x), -max(points$x)),
@@ -263,16 +288,17 @@ server <- function(input, output) {
 
     # Split base polygon into vertical/horizontal chamber segments
     vert_simple <- st_crop(inner, vert_bbox)
+    test <- vert_simple
     hor_simple <- st_crop(inner, hor_bbox)
 
     # Calculate scale factor for differential cut
     scale_factor <- function(baffle_orientation) {
       if (baffle_orientation == "vertical") {
         a <- input$verticalChamberWidth / 2 # Semi-major axis (half of width)
-        b <- input$verticalChamberHeight - input$baffleHeight
+        b <- input$verticalChamberHeight - input$baffleHeight # Semi-minor axis (half of height)
       } else if (baffle_orientation == "horizontal") {
-        a <- input$horizontalChamberWidth / 2 # Semi-major axis (half of width)
-        b <- input$horizontalChamberHeight - input$baffleHeight # Semi-minor axis (half of height)
+        a <- input$horizontalChamberWidth / 2
+        b <- input$horizontalChamberHeight - input$baffleHeight
       }
 
       # Calculate perimeter of ellipse
@@ -311,6 +337,29 @@ server <- function(input, output) {
       coords <- st_coordinates(sf_poly)[, c("X", "Y")]
       # Add outer chamber wall
       if (chamber_orientation == "vertical") {
+        if (input$orientationSplitHeight == 0) {
+          # Find indices of points with minimum y
+          min_y <- min(coords[, "Y"])
+          min_y_indices <- which(abs(coords[, "Y"] - min_y) < 1e-10)
+
+          # Select the most extreme x values on each side where y is the minimum
+          idx1 <- min_y_indices[1]
+          idx2 <- min_y_indices[length(min_y_indices)]
+
+          # Create new points
+          new_point1 <- c(coords[idx1, 1], min_y - input$baffleHeight)
+          new_point2 <- c(coords[idx2, 1], min_y - input$baffleHeight)
+
+          # Insert new points
+          if (idx1 < nrow(coords)) {
+            coords <- rbind(
+              coords[1:idx1, ],
+              new_point1,
+              new_point2,
+              coords[(idx2):nrow(coords), ]
+            )
+          }
+        }
         coords[, "X"] <- ifelse(coords[, "X"] < 0, coords[, "X"] - input$baffleHeight, coords[, "X"] + input$baffleHeight)
         altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
       } else if (chamber_orientation == "horizontal") {
@@ -323,7 +372,7 @@ server <- function(input, output) {
         idx2 <- min_y_indices[2]
         idx3 <- min_y_indices[3]
 
-        # Create new points: same x, y-y_diff
+        # Create new points to add to polygon
         new_point1 <- c(coords[idx1, 1], min_y - input$baffleHeight)
         new_point2 <- c(coords[idx2, 1], min_y - input$baffleHeight)
         new_point3 <- c(coords[idx3, 1], min_y - input$baffleHeight)
@@ -339,30 +388,14 @@ server <- function(input, output) {
           )
         }
 
-        # # Create new points: same x, y - baffle_height
-        # new_points <- lapply(seq_along(min_y_indices), function(i) {
-        #   c(coords[min_y_indices[i], "X"], min_y - input$baffleHeight)
-        # })
-
-        # # Convert new_points list to matrix for rbind
-        # new_points <- do.call(rbind, new_points)
-
-
-        # # Determine insertion point (after the last min_y point)
-        # insert_after <- min(min_y_indices)
-
-        # # Combine original and new points
-        # if (insert_after < nrow(coords)) {
-        #   new_coords <- rbind(
-        #     coords[1:insert_after, ],
-        #     new_points,
-        #     coords[(insert_after + 1):nrow(coords), ]
-        #   )
-        # } else {
-        #   # If min_y points are at the end, append new points
-        #   new_coords <- rbind(coords, new_points)
-        # }
-
+        # Expand polygon along the x-axis by baffle height
+        # This added fabric in the outer horizontal is meant to factor in the last baffle as the outer material
+        if (input$orientationSplitHeight == max(points$y)) {
+          coords[, "X"] <- ifelse(coords[, "X"] < 0,
+            coords[, "X"] - input$baffleHeight,
+            coords[, "X"] + input$baffleHeight
+          )
+        }
         # Form polygon from coordinates
         altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
       }
@@ -374,16 +407,11 @@ server <- function(input, output) {
     # Add fabric to outer layer to cover outer edge walls if checkbox selected
     if (input$baffleWallExtension) {
       outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "vertical")
-      # if (input$orientationSplitHeight == 0) {
-      #   outer_vert_extend <- add_baffle_wall_allowance(outer_vert_extend, "horizontal")
-      # }
       outer_hor_extend <- add_baffle_wall_allowance(outer_hor_simple, "horizontal")
     } else {
       outer_vert_extend <- outer_vert_simple
       outer_hor_extend <- outer_hor_simple
     }
-
-    test <- st_coordinates(outer_vert_extend)
 
     # Add seam allowance w/ non-rounded vertices
     inner_seam <- st_buffer(inner, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
@@ -550,6 +578,7 @@ server <- function(input, output) {
 
     hor_baffle_lengths <- calculate_baffle_lengths(outer_hor_chamber_vertices, "X")
     vert_baffle_lengths <- calculate_baffle_lengths(outer_vert_chamber_vertices, "Y")
+    test <- hor_baffle_lengths
 
 
     # Calculate base area/volume
