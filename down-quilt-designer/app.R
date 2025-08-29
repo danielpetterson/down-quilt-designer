@@ -64,6 +64,13 @@ materials_accordion <- bslib::accordion_panel(
   numericInput("baffleWeight", "Baffle Material Weight (gsm)", 25, min = 0)
 )
 
+instruction_card <- bslib::card(
+  bslib::card_header("User Guide"),
+  verbatimTextOutput("test"),
+  uiOutput("intro")
+)
+
+
 manual_entry_card <- bslib::card(
   bslib::card_body(
     bslib::layout_column_wrap(
@@ -101,11 +108,6 @@ plot_input_card <- bslib::card(
 selected_points_card <- bslib::card(
   bslib::card_header("Selected Points"),
   tableOutput("table")
-)
-
-card2 <- bslib::card(
-  bslib::card_header("Text Output"),
-  verbatimTextOutput("test")
 )
 
 inner_card <- bslib::card(
@@ -154,6 +156,16 @@ ui <- bslib::page_navbar(
     )
   ),
   bslib::nav_panel(
+    title = "Instructions",
+    bslib::layout_column_wrap(
+      width = NULL,
+      height = NULL,
+      fill = FALSE,
+      style = bslib::css(grid_template_columns = "2fr 1fr"),
+      instruction_card
+    )
+  ),
+  bslib::nav_panel(
     title = "Input Dimensions",
     bslib::layout_column_wrap(
       width = NULL,
@@ -168,11 +180,11 @@ ui <- bslib::page_navbar(
     title = "Output Dimensions",
     navset_card_tab(
       full_screen = TRUE,
-      nav_panel(
-        shiny::icon("circle-info"),
-        markdown("Info placeholder"),
-        card2,
-      ),
+      # nav_panel(
+      #   shiny::icon("circle-info"),
+      #   markdown("Info placeholder"),
+      #   card2,
+      # ),
       nav_panel(
         "Inner Layer",
         inner_card
@@ -266,13 +278,13 @@ server <- function(input, output) {
     inner <- st_sfc(sf::st_polygon(list(cbind(points$x, points$y))))
 
     # Catch issues with full length vertical/horizontal chambers
-    if (input$orientationSplitHeight == 0) {
-      split_height <- 0.00001
-    } else if (input$orientationSplitHeight >= max(points$y)) {
-      split_height <- max(points$y) - 0.00001
-    } else {
-      split_height <- input$orientationSplitHeight
-    }
+    # if (input$orientationSplitHeight == 0) {
+    #   split_height <- 0.0001
+    # } else if (input$orientationSplitHeight >= max(points$y)) {
+    #   split_height <- max(points$y) - 0.0001
+    # } else {
+    split_height <- input$orientationSplitHeight
+    # }
 
     # Define bounding boxes for vertical/horizontal chamber segments
     vert_bbox <- st_sfc(st_polygon(list(cbind(
@@ -571,15 +583,12 @@ server <- function(input, output) {
 
       total_baffle_length <- sum(length_by_baffle$baffle_length)
 
-
       return(total_baffle_length)
     }
 
 
     hor_baffle_lengths <- calculate_baffle_lengths(outer_hor_chamber_vertices, "X")
     vert_baffle_lengths <- calculate_baffle_lengths(outer_vert_chamber_vertices, "Y")
-    test <- hor_baffle_lengths
-
 
     # Calculate base area/volume
     # Extrude 2D chambers to 3D shapes (Uses area of polygon to optimise accuracy with little overhead)
@@ -644,7 +653,8 @@ server <- function(input, output) {
               lengths <- numeric(0) # No intersections
             }
             poly_id <- rep(i, length(lengths))
-
+            # Round for floating point innaccuracies. Necessary for correct join.
+            reference_vals <- round(reference_vals, 10)
             # Add lengths to a df. Remove last row.
             lengths_df <- rbind(lengths_df, cbind(poly_id, reference_vals, lengths)[-length(lengths), ])
           }
@@ -655,8 +665,9 @@ server <- function(input, output) {
         inner_chamber_widths <- extract_lengths(sf_obj_inner, reference_axis)
         # Width of chamber upper / Length of curve of the semi-ellipse chamber upper
         outer_chamber_widths <- extract_lengths(sf_obj_outer, reference_axis)
+        # Standardise axis between inner and outer layers
         if (reference_axis == "Y") {
-          outer_chamber_widths$reference_vals <- outer_chamber_widths$reference_vals + split_height
+          outer_chamber_widths$reference_vals <- outer_chamber_widths$reference_vals + input$orientationSplitHeight
         }
 
         # Join inner and outer widths to a single dataframe
@@ -749,11 +760,13 @@ server <- function(input, output) {
 
 
 
+
     ### -------------------------------------------------------------
     ## Specifications
 
     # ---Volume---
     volume <- sum(vert_chamber_volumes$total_volume) + sum(hor_chamber_volumes$total_volume)
+    # volume <- 1
     # down volume per gram CUIN/oz to CUCM/g
     # IDFL paper suggests using 28.77 for inch/cm conversions
     # Samples are usually 28.4/28.5 or 30 grams depending on type of test
@@ -761,7 +774,8 @@ server <- function(input, output) {
     FP_metric <- (input$FP * 16.387064) / 28.349525440835
     average_loft_vert <- sum(vert_chamber_volumes$total_volume) / st_area(vert_simple)
     average_loft_hor <- sum(hor_chamber_volumes$total_volume) / st_area(hor_simple)
-
+    # average_loft_vert <- 1
+    # average_loft_hor <- 1
 
     # ---Area---
     inner_layer_area <- st_area(inner_seam)
@@ -774,8 +788,9 @@ server <- function(input, output) {
     inner_layer_weight <- inner_layer_area * (input$innerWeight / 10000)
     outer_layer_weight <- outer_layer_area * (input$outerWeight / 10000)
     baffle_material_weight <- baffle_material_area * (input$baffleWeight / 10000)
-    # Number of grams needed to fill chambers
+    # # Number of grams needed to fill chambers
     grams_down <- volume / FP_metric
+    # grams_down <- 1
     # Adjusted for over/underfill
     grams_down_adj <- grams_down * (1 + (input$overstuff / 100))
     total_weight <- sum(inner_layer_weight, outer_layer_weight, baffle_material_weight, grams_down_adj)
@@ -850,6 +865,7 @@ server <- function(input, output) {
       "Volume: ", round(hor_chamber_volumes$total_volume, 2), " cm^3",
       "<br>Down Required: ", round((hor_chamber_volumes$total_volume / FP_metric) * (1 + (input$overstuff / 100)), 2), " grams"
     )
+
 
     # Named list/pseudo-dictionary of output data
     list(
@@ -928,7 +944,23 @@ server <- function(input, output) {
   #   inner_plot
   # })
 
+  output$intro <- shiny::renderUI({
+    tagList(
+      h3("Section 1: Introduction"),
+      p("This is the introductory text for your guide. Explain the purpose and what the user will learn."),
+      # img(src = "path/to/your/image1.png", width = "100%") # Optional: Add an image
+    )
+  })
+
+
   output$inner_plot <- renderGirafe({
+    validate(
+      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
+      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
+      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+    )
+
     req(data_list)
     inner_simple <- data_list()$inner_layer[[1]]
     with_seam <- data_list()$inner_layer[[2]]
@@ -961,6 +993,13 @@ server <- function(input, output) {
   })
 
   output$outer_vert_plot <- renderGirafe({
+    validate(
+      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
+      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
+      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+    )
+
     req(data_list)
     vert_simple <- data_list()$outer_layer_vert[[1]]
     with_seam <- data_list()$outer_layer_vert[[2]]
@@ -989,6 +1028,13 @@ server <- function(input, output) {
   })
 
   output$outer_hor_plot <- renderGirafe({
+    validate(
+      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
+      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
+      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+    )
+
     req(data_list)
     hor_simple <- data_list()$outer_layer_hor[[1]]
     with_seam <- data_list()$outer_layer_hor[[2]]
@@ -1019,7 +1065,7 @@ server <- function(input, output) {
       need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
       need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
       need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
     )
 
     spec_data <- data_list()$specifications
