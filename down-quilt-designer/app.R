@@ -6,19 +6,22 @@ library(ggiraph)
 library(dplyr)
 library(sf)
 library(stats)
+library(DT)
 library(gt)
 
 options(shiny.sanitize.errors = FALSE)
 
 ## TODO:
 # Test brand.yml
-# Instructions
 
 ## Future goals:
 # Chamber dimension optimisation
 # Footbox
 
 # Issues:
+
+
+test <- NULL
 
 
 #---------------------------
@@ -29,13 +32,28 @@ design_accordion <- bslib::accordion_panel(
   icon = bsicons::bs_icon("grid"),
   numericInput("maxDim", "Longest Dimension (cm)", 210, min = 0),
   numericInput("orientationSplitHeight", "Baffle Orientation Change Height", 50, min = 0.5),
-  numericInput("baffleHeight", "Baffle Height (cm)", 2, min = 0),
+  numericInput("baffleHeight", label = p(
+    "Baffle Height (cm)",
+    bslib::tooltip(
+      bsicons::bs_icon("info-circle"),
+      "For sewn-through baffles it is advised to use the dimension of the outer layer and double
+       all volumetric measurements."
+    )
+  ), 2, min = 0),
   numericInput("verticalChamberHeight", "Max Vertical Chamber Height (cm)", 2.5, min = 0),
-  numericInput("verticalChamberWidth", "Vertical Chamber Width (cm)", 15, min = 0),
+  numericInput("verticalChamberWidth", "Vertical Chamber Width (cm)", 12.5, min = 0),
   numericInput("horizontalChamberHeight", "Max Horizontal Chamber Height (cm)", 2.5, min = 0),
-  numericInput("horizontalChamberWidth", "Horizontal Chamber Width (cm)", 11, min = 0),
+  numericInput("horizontalChamberWidth", "Horizontal Chamber Width (cm)", 10, min = 0),
   numericInput("seamAllowance", "Seam Allowance (cm)", 1, min = 0, step = 0.25),
-  checkboxInput("baffleWallExtension", "Include Edge Chamber Wall", TRUE)
+  checkboxInput("baffleWallExtension", label = p(
+    "Include Edge Chamber Wall",
+    bslib::tooltip(
+      bsicons::bs_icon("info-circle"),
+      "Use of this feature may cause issues. In case of error you will need to expand the outer
+       layer by the baffle height on each edge chamber that needs to be closed. Failing to do
+       this will reduce the capacity of the edge chambers."
+    )
+  ), FALSE),
 )
 
 materials_accordion <- bslib::accordion_panel(
@@ -50,7 +68,9 @@ materials_accordion <- bslib::accordion_panel(
 
 instruction_card <- bslib::card(
   bslib::card_header("User Guide"),
-  verbatimTextOutput("test"),
+  if (!is.null(test)) {
+    verbatimTextOutput("test")
+  },
   uiOutput("intro")
 )
 
@@ -66,35 +86,22 @@ manual_entry_card <- bslib::card(
   )
 )
 
-plot_input_card <- bslib::card(
-  bslib::card_header("Define vertices manually or click to draw right side of the quilt"),
+selected_points_card <- bslib::card(
+  bslib::card_header("Input"),
   manual_entry_card,
-  bslib::card_body(
-    fillable = T,
-    # button to add vertices
-    actionButton("add_point", "Add Point"),
-  ),
-  verbatimTextOutput("hover_info"),
-  plotOutput("input_plot",
-    height = 600,
-    # add plot click functionality
-    click = "plot_click",
-    # add the hover options
-    hover = hoverOpts(
-      id = "plot_hover",
-      nullOutside = TRUE
-    )
-  ),
+  # button to add vertices
+  actionButton("add_point", "Add Point"),
   # button to remove last vertex
   actionButton("rem_point", "Remove Last Point"),
-)
-
-selected_points_card <- bslib::card(
-  bslib::card_header("Selected Points"),
-  tableOutput("table")
+  hr(),
+  h5("Selected Points"),
+  helpText("Click on any cell in the table to edit its value. Press the 'Enter' key to save the
+   change."),
+  DT::dataTableOutput("table"),
 )
 
 inner_card <- bslib::card(
+  helpText("Scroll over the plot to see the chamber and vertices attributes."),
   girafeOutput("inner_plot")
 )
 
@@ -108,14 +115,10 @@ outer_hor_card <- bslib::card(
 
 plot_input_card <- bslib::card(
   bslib::card_header("Define vertices manually or click to draw right side of the quilt"),
-  manual_entry_card,
-  bslib::card_body(
-    fillable = T,
-    # button to add vertices
-    actionButton("add_point", "Add Point"),
-    # button to remove last vertex
-    actionButton("rem_point", "Remove Last Point"),
-  ),
+  helpText("X must equal zero for the first point and the final point should be at the
+  origin (0,0).
+  To prevent some issues with the baffle wall extension it is recommended that the penultimate
+  Y value also be zero."),
   verbatimTextOutput("hover_info"),
   plotOutput("input_plot",
     height = 600,
@@ -585,7 +588,7 @@ server <- function(input, output) {
     return(chamber_attributes)
   }
 
-  test <- 1
+
   #---------------------------
   # Coordinate Inputs
   #---------------------------
@@ -855,7 +858,12 @@ server <- function(input, output) {
     # ---Area---
     inner_layer_area <- st_area(inner_seam)
     outer_layer_area <- outer_layer_area
-    baffle_material_height <- input$baffleHeight + (2 * input$seamAllowance)
+    if (input$baffleHeight != 0) {
+      baffle_material_height <- input$baffleHeight + (2 * input$seamAllowance)
+    } else {
+      baffle_material_height <- 0
+    }
+
     baffle_material_length <- baffle_length
     baffle_material_area <- baffle_material_height * baffle_material_length
 
@@ -983,9 +991,23 @@ server <- function(input, output) {
     values$user_input <- rem_row
   })
 
-  # render a table of the dataframe
-  output$table <- shiny::renderTable({
-    values$user_input
+  # # render a table of the dataframe
+  # output$table <- shiny::renderTable({
+  #   values$user_input
+  # })
+
+  output$table <- DT::renderDataTable({
+    DT::datatable(
+      values$user_input,
+      rownames = FALSE,
+      editable = list(target = "cell"), # This enables cell-level editing
+      options = list(
+        "info" = FALSE,
+        "paging" = FALSE,
+        "searching" = FALSE,
+        "ordering" = FALSE
+      )
+    )
   })
 
   output$hover_info <- shiny::renderPrint({
@@ -1017,8 +1039,46 @@ server <- function(input, output) {
 
   output$intro <- shiny::renderUI({
     tagList(
-      h3("Section 1: Introduction"),
-      p("This is the introductory text for your guide. Explain the purpose and what the user will learn."),
+      h6("Background"),
+      p("This app was created to extend on the work of CatSplat's Underquilt Calculator
+      by allowing users to define non-rectangular shapes."),
+      h6("How To Use"),
+      p("Enter the coordinates for each vertex of the right side of your desired shape on the
+      Input Dimensions page. Customize the parameters in the sidebar to meet your requirements."),
+      h6("Term Definitions:"),
+      tags$ul(
+        tags$li("Longest Dimension: Sets the axis limits for the Input Dimensions graph."),
+        tags$li("Baffle Orientation Change Height: Divides the shape into vertical chambers
+        above this height and horizontal chambers below. For a single chamber orientation,
+        set this to the minimum or maximum y-value."),
+        tags$li("Baffle Height: The height of the finished baffle, excluding seam allowance.
+         Set to zero for sewn-through baffles."),
+        tags$li("Max Vertical/Horizontal Chamber Height: TThe distance from the chamber's center
+         base to the highest point of the semi-ellipse. For a non-differential cut, set this
+         equal to the baffle height."),
+        tags$li("Vertical/Horizontal Chamber Width: The maximum distance between baffle walls."),
+      ),
+      h6("Plot Legend"),
+      tags$ul(
+        tags$li("Blue circles denote the outer edge vertices of the shape, including seam allowance."),
+        tags$li("Red circles denote the vertices of the chambers and guide where to sew baffles.")
+      ),
+      h6("Notes"),
+      tags$ul(
+        tags$li("You can also use this tool to make a footbox. Ensure that the perimeter of the
+        footbox is equal to the bottom edge of the inner layer, minus the seam allowances."),
+        tags$li("For a non-differential cut, volume is calculated by multiplying the area by the
+         baffle height. For a differential cut, the volume is estimated by calculating the area
+          of a semi-ellipse (where a = chamber width / 2 and b = max chamber height - baffle
+          height) at 1cm intervals and summing these areas for an accurate approximation of the
+           chamber's upper segment volume."),
+      ),
+      tags$p(
+        "Please direct any queries or issues to the  ",
+        tags$a(
+          href = "https://github.com/danielpetterson/down-quilt-designer", "Github repository"
+        ), ".",
+      ),
       # img(src = "path/to/your/image1.png", width = "100%") # Optional: Add an image
     )
   })
