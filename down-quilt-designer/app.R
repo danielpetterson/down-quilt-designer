@@ -12,14 +12,17 @@ options(shiny.sanitize.errors = FALSE)
 
 ## TODO:
 # Test brand.yml
+# Instructions
+
+## Future goals:
+# Chamber dimension optimisation
+# Footbox
 
 # Issues:
 
 
 #---------------------------
-
-
-# Frontend
+# UI Elements
 #---------------------------
 design_accordion <- bslib::accordion_panel(
   "Design",
@@ -126,7 +129,9 @@ plot_input_card <- bslib::card(
   ),
 )
 
+#---------------------------
 # UI layout
+#---------------------------
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
   theme = bs_theme(brand = T),
@@ -190,13 +195,10 @@ ui <- bslib::page_navbar(
 )
 #---------------------------
 
-
+#---------------------------
 # Backend
 #---------------------------
 server <- function(input, output) {
-  # Helper Functions
-  #---------------------------
-
   # Rounding for input due to inaccuracy of clicking
   round_any <- function(x, accuracy, f = round) {
     f(x / accuracy) * accuracy
@@ -240,7 +242,7 @@ server <- function(input, output) {
     coords[, "Y"] <- coords[, "Y"] * y_scaling_factor
     # Offset y-axis
     new_polygon <- st_polygon(list(coords[, c("X", "Y")]))
-    scaled_polygon <- st_sfc(new_polygon, crs = st_crs(sf_poly)) %>% st_sf()
+    scaled_polygon <- st_sfc(new_polygon, crs = st_crs(sf_poly)) |> st_sf()
 
     return(scaled_polygon)
   }
@@ -327,21 +329,23 @@ server <- function(input, output) {
 
       # Expand polygon along the x-axis by baffle height
       # This added fabric in the outer horizontal is meant to factor in the last baffle as the outer material
-      if (input$orientationSplitHeight == max(points$y)) {
+      if (max(values$user_input$y) == input$orientationSplitHeight) {
         coords[, "X"] <- ifelse(coords[, "X"] < 0,
           coords[, "X"] - input$baffleHeight,
           coords[, "X"] + input$baffleHeight
         )
       }
+
       # Form polygon from coordinates
       altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
     }
+    baffle_wall_polygon <- st_sfc(altered_polygon, crs = st_crs(sf_poly)) |> st_sf()
 
-    baffle_wall_polygon <- st_sfc(altered_polygon, crs = st_crs(sf_poly)) %>% st_sf()
     return(baffle_wall_polygon)
   }
 
   # Function to mirror chamber polygons across the y-axis
+  # Only applied to vertical chambers
   mirror_vert_chambers <- function(sf_poly) {
     reflection_matrix <- matrix(c(-1, 0, 0, 1), nrow = 2, ncol = 2)
     mirrored_geom <- st_geometry(sf_poly) * reflection_matrix
@@ -352,7 +356,9 @@ server <- function(input, output) {
 
   # Extract vertices of an sf polygon
   extract_polygon_vertices <- function(sf_poly) {
+    # Cast to points geometries
     vertices <- st_cast(st_geometry(sf_poly), "POINT")
+    # Remove final point which closes polygons
     vertices <- vertices[1:length(vertices) - 1]
     sf_vertices <- st_sf(
       id = seq_along(vertices),
@@ -360,7 +366,6 @@ server <- function(input, output) {
       y = round(st_coordinates(vertices)[, 2], 1),
       geometry = vertices
     )
-
     # Create tooltip labels with coordinates
     sf_vertices$tooltip <- paste0("(", sf_vertices$x, ", ", sf_vertices$y, ")")
 
@@ -405,9 +410,9 @@ server <- function(input, output) {
     }
 
     # Group by other and calculate differences in reference for points with same other value
-    length_by_baffle <- data %>%
-      group_by(other) %>%
-      summarise(baffle_length = if (n() > 1) abs(diff(reference)) else NA_real_) %>%
+    length_by_baffle <- data |>
+      group_by(other) |>
+      summarise(baffle_length = if (n() > 1) abs(diff(reference)) else NA_real_) |>
       filter(!is.na(baffle_length))
 
     total_baffle_length <- sum(length_by_baffle$baffle_length)
@@ -503,7 +508,7 @@ server <- function(input, output) {
 
       return(attributes)
     }
-
+    # DF with polygon ID, inner and outer chamber widths
     attributes <- calculate_chamber_width_at_reference(inner_section_poly, outer_section_poly, reference_axis)
 
     # Function to create a semi-ellipse and calculate their area from base and arc lengths
@@ -586,16 +591,17 @@ server <- function(input, output) {
   #---------------------------
   values <- shiny::reactiveValues()
 
+  values$user_input <- data.frame(
+    x = c(0, 71, 71, 50, 0),
+    y = c(210, 210, 100, 0, 0)
+  )
+
+  # # For validation
   # values$user_input <- data.frame(
-  #   x = c(0, 71, 71, 50, 0),
-  #   y = c(210, 210, 100, 0, 0)
+  #   x = c(0, 50, 50, 0),
+  #   y = c(100, 100, 0, 0)
   # )
 
-  # For validation
-  values$user_input <- data.frame(
-    x = c(0, 50, 50, 0),
-    y = c(100, 100, 0, 0)
-  )
 
   # Reactive values for conditional output of outer layer plots
   output$full_horizontal <- reactive({
@@ -646,6 +652,7 @@ server <- function(input, output) {
       y = all_selected_points_y()
     )
 
+
     # # Standardise y-axis if bottom edge of shape is not equal to y=0
     # y_min_diff <- 0 - min(points$y)
     # if (y_min_diff) {
@@ -689,11 +696,15 @@ server <- function(input, output) {
       outer_vert_simple <- scale_geometry(vert_simple, vert_baffle_scale_factor, 1)
 
       # Add fabric to outer layer to cover outer edge walls if checkbox selected
-      if (input$baffleWallExtension) {
+      if (input$baffleWallExtension & full_vertical_chambers()) {
+        outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "horizontal")
+        outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "vertical")
+      } else if (input$baffleWallExtension) {
         outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "vertical")
       } else {
         outer_vert_extend <- outer_vert_simple
       }
+
       outer_vert_simple_seam <- st_buffer(outer_vert_extend, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
 
       outer_vert_list <- adjust_y_zero(outer_vert_simple, outer_vert_simple_seam)
@@ -753,11 +764,15 @@ server <- function(input, output) {
       outer_hor_simple <- scale_geometry(hor_simple, 1, hor_baffle_scale_factor)
 
       # Add fabric to outer layer to cover outer edge walls if checkbox selected
-      if (input$baffleWallExtension) {
+      if (input$baffleWallExtension & full_horizontal_chambers()) {
+        outer_hor_extend <- add_baffle_wall_allowance(outer_hor_simple, "horizontal")
+        outer_hor_extend <- add_baffle_wall_allowance(outer_hor_extend, "vertical")
+      } else if (input$baffleWallExtension) {
         outer_hor_extend <- add_baffle_wall_allowance(outer_hor_simple, "horizontal")
       } else {
         outer_hor_extend <- outer_hor_simple
       }
+
       outer_hor_simple_seam <- st_buffer(outer_hor_extend, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
 
       outer_hor_list <- adjust_y_zero(outer_hor_simple, outer_hor_simple_seam)
@@ -957,12 +972,14 @@ server <- function(input, output) {
   # add row on actionButton click
   shiny::observeEvent(input$add_point, {
     add_row <- rbind(values$user_input, c(input$x_add, input$y_add))
+    colnames(add_row) <- c("x", "y")
     values$user_input <- add_row
   })
 
   # remove row on actionButton click
   shiny::observeEvent(input$rem_point, {
     rem_row <- values$user_input[-nrow(values$user_input), ]
+    # colnames(rem_row) <- c("x", "y")
     values$user_input <- rem_row
   })
 
@@ -1011,8 +1028,8 @@ server <- function(input, output) {
     validate(
       need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
       need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
     )
 
     req(data_list)
@@ -1050,8 +1067,8 @@ server <- function(input, output) {
     validate(
       need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
       need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
     )
 
     gg_poly_vert <- ggplot()
@@ -1090,8 +1107,8 @@ server <- function(input, output) {
     validate(
       need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
       need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
     )
 
     gg_poly_hor <- ggplot()
@@ -1126,8 +1143,8 @@ server <- function(input, output) {
     validate(
       need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
       need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) < (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) < (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
     )
 
     spec_data <- data_list()$specifications
