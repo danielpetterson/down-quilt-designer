@@ -45,6 +45,12 @@ design_accordion <- bslib::accordion_panel(
   numericInput("horizontalChamberHeight", "Max Horizontal Chamber Height (cm)", 7, min = 0),
   numericInput("horizontalChamberWidth", "Horizontal Chamber Width (cm)", 10, min = 0),
   numericInput("seamAllowance", "Seam Allowance (cm)", 1, min = 0, step = 0.25),
+  selectInput("footboxShape", "Select Footbox Type:",
+    choices = c("None", "Ellipse", "Rectangle", "Trapezoid"),
+    selected = "None"
+  ),
+  numericInput("footboxParameter1", "Footbox Parameter1", 0.5),
+  numericInput("footboxParameter2", "Footbox Parameter2", 0.5),
   checkboxInput("baffleWallExtension", label = p(
     "Include Edge Chamber Wall",
     bslib::tooltip(
@@ -109,6 +115,10 @@ outer_vert_card <- bslib::card(
 
 outer_hor_card <- bslib::card(
   girafeOutput("outer_hor_plot")
+)
+
+footbox_card <- bslib::card(
+  girafeOutput("footbox_plot")
 )
 
 plot_input_card <- bslib::card(
@@ -185,6 +195,14 @@ ui <- bslib::page_navbar(
         conditionalPanel(
           "!output.full_vertical",
           outer_hor_card
+        )
+      ),
+      nav_panel(
+        "Footbox",
+        # Show card only if the design is not only vertical chambers
+        conditionalPanel(
+          'input.footboxShape != "None"',
+          footbox_card
         )
       ),
     ),
@@ -591,6 +609,173 @@ server <- function(input, output) {
     return(chamber_attributes)
   }
 
+  # Function to create an sf object of an ellipse/circle
+  # perimeter: The target perimeter for the ellipse.
+  # ratio: The shape parameter (theta), defined as b/a, where 0 < ratio <= 1.
+  #        A ratio of 1 is a circle, and a ratio close to 0 is a very flat ellipse.
+  create_ellipse_sf <- function(perimeter, ratio) {
+    # Validate the ratio input
+    if (ratio <= 0 || ratio > 1) {
+      stop("The 'ratio' parameter must be between 0 and 1 (exclusive of 0).")
+    }
+
+    # Helper function to calculate ellipse perimeter
+    # a: semi-major axis
+    # b: semi-minor axis
+    calculate_perimeter <- function(a, b) {
+      pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b)))
+    }
+
+    # Define central point
+    center <- c(0, 0)
+
+    # Define unscaled axes based on the desired shape ratio.
+    # We start with a base ellipse of size 1.
+    a_unscaled <- 1
+    b_unscaled <- ratio
+
+    # Calculate the perimeter of this small, unscaled ellipse.
+    perimeter_unscaled <- calculate_perimeter(a_unscaled, b_unscaled)
+
+    # Determine the scaling factor needed to reach the desired perimeter.
+    scale_factor <- perimeter / perimeter_unscaled
+
+    # Calculate the final, scaled semi-axes.
+    a <- a_unscaled * scale_factor
+    b <- b_unscaled * scale_factor
+
+    # Generate points along the ellipse boundary using parametric equations.
+    # More points result in a smoother shape.
+    angles <- seq(0, 2 * pi, length.out = 100)
+    x_coords <- center[1] + a * cos(angles)
+    y_coords <- center[2] + b * sin(angles)
+
+    # Combine coordinates into a matrix for the polygon definition.
+    ellipse_points <- cbind(x_coords, y_coords)
+    # Add final point to close polygon
+    ellipse_points <- rbind(ellipse_points, ellipse_points[1, ])
+    # Convert the points into an sf polygon object.
+    ellipse_poly <- st_polygon(list(ellipse_points))
+
+    # Create the final sf data frame with useful metadata.
+    ellipse_sf <- st_as_sf(data.frame(
+      geometry = st_sfc(ellipse_poly),
+      semi_major_a = a,
+      semi_minor_b = b
+    ))
+
+    return(ellipse_sf)
+  }
+
+  # perimeter: The target perimeter for the rectangle.
+  # ratio: The shape parameter, defined as height / width, where ratio > 0.
+  create_rectangle_sf <- function(perimeter, ratio) {
+    # Validate the ratio input
+    if (ratio <= 0) {
+      stop("The 'ratio' parameter must be greater than 0.")
+    }
+
+    # Define central point
+    center <- c(0, 0)
+
+    # Define unscaled dimensions based on the desired shape ratio.
+    w_unscaled <- 1
+    h_unscaled <- ratio
+
+    # Step B: Calculate the perimeter of this small, unscaled rectangle.
+    perimeter_unscaled <- 2 * (w_unscaled + h_unscaled)
+
+    # Step C: Determine the scaling factor.
+    scale_factor <- perimeter / perimeter_unscaled
+
+    # Step D: Calculate the final, scaled dimensions.
+    w <- w_unscaled * scale_factor
+    h <- h_unscaled * scale_factor
+
+    # Step E: Generate the four corner points for the polygon.
+    x_coords <- center[1] + c(-w / 2, w / 2, w / 2, -w / 2, -w / 2)
+    y_coords <- center[2] + c(-h / 2, -h / 2, h / 2, h / 2, -h / 2)
+    rectangle_points <- cbind(x_coords, y_coords)
+
+    # Step F: Convert the points into an sf polygon object.
+    rectangle_poly <- st_polygon(list(rectangle_points))
+
+    # Create the final sf data frame with useful metadata.
+    rectangle_sf <- st_as_sf(data.frame(
+      geometry = st_sfc(rectangle_poly),
+      width_w = w,
+      height_h = h
+    ))
+
+    return(rectangle_sf)
+  }
+
+  # Assumes an isosceles trapezoid where height is the average of the parallel sides.
+  # perimeter: The target perimeter for the trapezoid.
+  # ratio: short_base / long_base, where 0 < ratio < 1.
+  # height: height of the shape
+  create_trapezoid_sf <- function(perimeter, ratio, height) {
+    # Validate input parameters
+    if (ratio <= 0 || ratio >= 1) {
+      stop("The 'ratio' parameter (short_base / long_base) must be between 0 and 1 (exclusive of 0 and 1).")
+    }
+    if (height <= 0 | height >= perimeter) {
+      stop("The 'height' parameter must be positive and less than the perimeter.")
+    }
+
+    # Define central point
+    center <- c(0, 0)
+
+    # Define unscaled dimensions
+    # a = long base
+    # b = short base
+    # h = height
+    # c = non-parallel side
+    a_unscaled <- 1
+    b_unscaled <- ratio * a_unscaled # ratio = b / a
+    h_unscaled <- height # Use the provided height directly
+
+    # Calculate the length of the non-parallel side 'c' using Pythagoras
+    # c^2 = h^2 + ((a - b) / 2)^2
+    c_unscaled <- sqrt(h_unscaled^2 + ((a_unscaled - b_unscaled) / 2)^2)
+
+    # Calculate the unscaled perimeter
+    perimeter_unscaled <- a_unscaled + b_unscaled + 2 * c_unscaled
+
+    # Determine the scaling factor to achieve the target perimeter
+    scale_factor <- perimeter / perimeter_unscaled
+
+    # Calculate scaled dimensions
+    a <- a_unscaled * scale_factor
+    b <- b_unscaled * scale_factor
+    h <- h_unscaled * scale_factor
+    c <- c_unscaled * scale_factor
+
+    # Generate the four corner points for the polygon
+    x_coords <- center[1] + c(-a / 2, a / 2, b / 2, -b / 2, -a / 2)
+    y_coords <- center[2] + c(-h / 2, -h / 2, h / 2, h / 2, -h / 2)
+
+    # Combine coordinates into a matrix
+    trapezoid_points <- cbind(x_coords, y_coords)
+
+    # Convert to sf polygon object
+    trapezoid_poly <- st_polygon(list(trapezoid_points))
+
+    # Create the final sf data frame with metadata
+    trapezoid_sf <- st_as_sf(data.frame(
+      geometry = st_sfc(trapezoid_poly),
+      long_base_a = a,
+      short_base_b = b,
+      height_h = h,
+      side_c = c
+    ))
+
+    return(trapezoid_sf)
+  }
+
+
+
+
 
   #---------------------------
   # Coordinate Inputs
@@ -836,6 +1021,18 @@ server <- function(input, output) {
 
     inner_seam_vertices <- extract_polygon_vertices(inner_seam)
 
+    # Calculate perimeter of footbox
+    fb_perimeter <- 100
+
+
+    if (input$footboxShape == "Ellipse") {
+      footbox_sf <- create_ellipse_sf(fb_perimeter, input$footboxParameter1)
+    } else if (input$footboxShape == "Rectangle") {
+      footbox_sf <- create_rectangle_sf(fb_perimeter, input$footboxParameter1)
+    } else if (input$footboxShape == "Trapezoid") {
+      footbox_sf <- create_trapezoid_sf(fb_perimeter, input$footboxParameter1, input$footboxParameter2)
+    }
+
 
     ### -------------------------------------------------------------
     ## Specifications
@@ -955,6 +1152,14 @@ server <- function(input, output) {
         )
       } else {
         list(outer_layer_vert = list())
+      },
+      if (input$footboxShape != "None") {
+        # Footbox polygons with horizontal chambers
+        list(
+          footbox = list(footbox_sf) # Footbox polygons with horizontal chambers
+        )
+      } else {
+        list(footbox = list())
       }
     )
   })
@@ -1216,6 +1421,45 @@ server <- function(input, output) {
 
     girafe(ggobj = gg_poly_hor)
   })
+
+  output$footbox_plot <- renderGirafe({
+    req(data_list)
+
+    validate(
+      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
+      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
+      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
+      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+    )
+
+    gg_footbox <- ggplot()
+
+    if (input$footboxShape != "None") {
+      inner <- data_list()$footbox[[1]]
+      # with_seam <- data_list()$outer_layer_hor[[2]]
+      # seam_vertices <- data_list()$outer_layer_hor[[3]]
+      # chamber_vertices <- data_list()$outer_layer_hor[[4]]
+
+      gg_footbox <- gg_footbox +
+        # geom_sf_interactive(data = with_seam) +
+        geom_sf_interactive(data = inner) +
+        # geom_sf_interactive(
+        #   data = seam_vertices,
+        #   aes(tooltip = tooltip, data_id = id),
+        #   color = "blue", size = 1, shape = 21
+        # ) +
+        # geom_sf_interactive(
+        #   data = chamber_vertices,
+        #   aes(tooltip = tooltip, data_id = id),
+        #   color = "red", size = 0.5, shape = 5, fill = "white"
+        # ) +
+        geom_vline(xintercept = 0, linetype = "dotted", linewidth = 1) +
+        theme_minimal()
+    }
+
+    girafe(ggobj = gg_footbox)
+  })
+
 
   output$specifications <- gt::render_gt({
     validate(
