@@ -39,10 +39,10 @@ design_accordion <- bslib::accordion_panel(
       "For sewn-through baffles it is advised to use the dimension of the outer layer and double
        all volumetric measurements."
     )
-  ), 2, min = 0),
-  numericInput("verticalChamberHeight", "Max Vertical Chamber Height (cm)", 2.5, min = 0),
+  ), 5, min = 0),
+  numericInput("verticalChamberHeight", "Max Vertical Chamber Height (cm)", 7.5, min = 0),
   numericInput("verticalChamberWidth", "Vertical Chamber Width (cm)", 12.5, min = 0),
-  numericInput("horizontalChamberHeight", "Max Horizontal Chamber Height (cm)", 2.5, min = 0),
+  numericInput("horizontalChamberHeight", "Max Horizontal Chamber Height (cm)", 7, min = 0),
   numericInput("horizontalChamberWidth", "Horizontal Chamber Width (cm)", 10, min = 0),
   numericInput("seamAllowance", "Seam Allowance (cm)", 1, min = 0, step = 0.25),
   checkboxInput("baffleWallExtension", label = p(
@@ -68,9 +68,7 @@ materials_accordion <- bslib::accordion_panel(
 
 instruction_card <- bslib::card(
   bslib::card_header("User Guide"),
-  if (!is.null(test)) {
-    verbatimTextOutput("test")
-  },
+  verbatimTextOutput("test"),
   uiOutput("intro")
 )
 
@@ -193,7 +191,12 @@ ui <- bslib::page_navbar(
   ),
   bslib::nav_panel(
     title = "Specifications",
-    gt_output("specifications")
+    gt_output("specifications"),
+  ), bslib::nav_panel(
+    title = "Temperature Rating",
+    plotOutput("temp_rating"),
+    gt_output("temp_model"),
+    helpText("There are many factors the impact the warmth of a quilt but measured loft serves as a guideline."),
   )
 )
 #---------------------------
@@ -929,8 +932,9 @@ server <- function(input, output) {
 
     # Truncate to 2 d.p.
     spec_data$Value <- round(spec_data$Value, digits = 2)
-    spec_data$Value <- paste(spec_data$Value, spec_data$Unit, sep = " ")
+    spec_data$Value2 <- paste(spec_data$Value, spec_data$Unit, sep = " ")
     ### -------------------------------------------------------------
+    test <- spec_data
 
     c(
       list(test = test),
@@ -954,6 +958,20 @@ server <- function(input, output) {
       }
     )
   })
+
+  #---------------------------
+  # Temerature Reference Data
+  #---------------------------
+  temp_rating_df <- data.frame(
+    Temperature = c(10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, -28.89, 10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, 10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, -28.89),
+    Loft = c(3.81, 5.69, 7.59, 9.5, 11.4, 13.28, 15.19, 17.09, 2.54, 3.81, 5.08, 6.35, 7.62, 8.89, 10.16, 3.05, 3.81, 4.57, 5.59, 6.60, 7.62, 8.89, 10.16),
+    Source = c(rep("Timmermade", 8), rep("Enlightened Equipment/Warbonnet", 7), rep("BPL", 8))
+  )
+
+  # Generate regression models: one for each Source group
+  temp_models <- temp_rating_df %>%
+    group_by(Source) %>%
+    do(model = lm(Temperature ~ Loft, data = .))
 
   ## --- Page: Input Dimensions ---
   # create design plot
@@ -1208,6 +1226,7 @@ server <- function(input, output) {
     )
 
     spec_data <- data_list()$specifications
+    spec_data$Value <- spec_data$Value2
     spec_data[, c(1, 2)] |>
       gt(rowname_col = "Metric") |>
       cols_align(
@@ -1225,8 +1244,72 @@ server <- function(input, output) {
       )
   })
 
+  output$temp_rating <- renderPlot({
+    spec_data <- data_list()$specifications
+    vert_intercept <- spec_data$Value[spec_data$Metric == "Average Loft Vertical Chambers"]
+    hor_intercept <- spec_data$Value[spec_data$Metric == "Average Loft Horizontal Chambers"]
+
+    ggplot(temp_rating_df, aes(x = Loft, y = Temperature, color = Source)) +
+      labs(
+        title = "Temperature Rating as a Function of Loft",
+        x = "Loft (cm)",
+        y = "Temperature Rating (C)"
+      ) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      geom_vline(
+        aes(xintercept = vert_intercept, linetype = "Average Loft Vertical Chambers"),
+        color = "red",
+      ) +
+      geom_vline(
+        aes(xintercept = hor_intercept, linetype = "Average Loft Horizontal Chambers"),
+        color = "blue",
+      ) +
+      theme_minimal()
+  })
+
+  output$temp_model <- gt::render_gt({
+    spec_data <- data_list()$specifications
+    vert_intercept <- spec_data$Value[spec_data$Metric == "Average Loft Vertical Chambers"]
+    hor_intercept <- spec_data$Value[spec_data$Metric == "Average Loft Horizontal Chambers"]
+
+    # Predict temperature rating for each Source
+    vertical_chamber_predictions <- temp_models %>%
+      mutate(
+        predicted_temperature = round(predict(model, newdata = data.frame(Loft = vert_intercept)), 2),
+        chamber_orientation = "Vertical"
+      )
+
+    horizontal_chamber_predictions <- temp_models %>%
+      mutate(
+        predicted_temperature = round(predict(model, newdata = data.frame(Loft = hor_intercept)), 2),
+        chamber_orientation = "Horizontal"
+      )
+
+    temp_predictions <- rbind(vertical_chamber_predictions, horizontal_chamber_predictions) |>
+      select(Source, chamber_orientation, predicted_temperature) |>
+      arrange(Source)
+
+
+    # Output the predicted values
+    temp_predictions |>
+      gt(rowname_col = "Source") |>
+      cols_align(
+        align = "right",
+        columns = chamber_orientation
+      ) |>
+      cols_label(
+        chamber_orientation = "Chamber Orientation",
+        predicted_temperature = "Temperature Rating (C)"
+      )
+  })
+
+
+
   output$test <- shiny::renderPrint({
+    # if (!is.null(test)) {
     data_list()$test
+    # }
   })
 }
 
