@@ -12,13 +12,12 @@ library(gt)
 options(shiny.sanitize.errors = FALSE)
 
 ## TODO:
-# Test brand.yml
 # Need chambers and vertices for footbox
-
+# Outer footbox baffle lines - should be same as inner
 
 # Issues:
 # Create_trapezoid_sf scale
-
+# Warning with cbind(poly_id, reference_vals, lengths): number of rows of result is not a multiple of vector length (arg 1)
 
 test <- NULL
 
@@ -30,21 +29,53 @@ design_accordion <- bslib::accordion_panel(
   "Design",
   icon = bsicons::bs_icon("grid"),
   numericInput("maxDim", "Longest Dimension (cm)", 210, min = 0),
-  numericInput("orientationSplitHeight", "Baffle Orientation Change Height", 50, min = 0.5),
-  numericInput("baffleHeight", label = p(
-    "Baffle Height (cm)",
-    bslib::tooltip(
-      bsicons::bs_icon("info-circle"),
-      "For sewn-through baffles it is advised to use the dimension of the outer layer and double
+  numericInput(
+    "orientationSplitHeight",
+    "Baffle Orientation Change Height",
+    50,
+    min = 0.5
+  ),
+  numericInput(
+    "baffleHeight",
+    label = p(
+      "Baffle Height (cm)",
+      bslib::tooltip(
+        bsicons::bs_icon("info-circle"),
+        "For sewn-through baffles it is advised to use the dimension of the outer layer and double
        all volumetric measurements."
-    )
-  ), 5, min = 0),
-  numericInput("verticalChamberHeight", "Max Vertical Chamber Height (cm)", 7.5, min = 0),
-  numericInput("verticalChamberWidth", "Vertical Chamber Width (cm)", 12.5, min = 0),
-  numericInput("horizontalChamberHeight", "Max Horizontal Chamber Height (cm)", 7, min = 0),
-  numericInput("horizontalChamberWidth", "Horizontal Chamber Width (cm)", 10, min = 0),
+      )
+    ),
+    5,
+    min = 0
+  ),
+  numericInput(
+    "verticalChamberHeight",
+    "Max Vertical Chamber Height (cm)",
+    7.5,
+    min = 0
+  ),
+  numericInput(
+    "verticalChamberWidth",
+    "Vertical Chamber Width (cm)",
+    12.5,
+    min = 0
+  ),
+  numericInput(
+    "horizontalChamberHeight",
+    "Max Horizontal Chamber Height (cm)",
+    7,
+    min = 0
+  ),
+  numericInput(
+    "horizontalChamberWidth",
+    "Horizontal Chamber Width (cm)",
+    10,
+    min = 0
+  ),
   numericInput("seamAllowance", "Seam Allowance (cm)", 1, min = 0, step = 0.25),
-  selectInput("footboxShape", "Select Footbox Type:",
+  selectInput(
+    "footboxShape",
+    "Select Footbox Type:",
     choices = c(
       "None",
       "Ellipse",
@@ -53,26 +84,38 @@ design_accordion <- bslib::accordion_panel(
     ),
     selected = "None"
   ),
+  # conditionalPanel(
+  #   condition = "input.footboxShape == 'Trapezoid'",
+  #   numericInput("trapezoidRatio", "Ratio", 0.5),
+  #   numericInput("trapezoidHeight", "Height", 10),
+  # ),
   conditionalPanel(
-    condition = "input.footboxShape == 'Ellipse'",
-    numericInput("ellipseRatio", "Ratio", 0.5),
+    condition = "input.footboxShape != 'None'",
+    numericInput("ratio", "Ratio", 0.75),
+    # numericInput(
+    #   "footboxChamberHeight",
+    #   "Max Footbox Chamber Height (cm)",
+    #   7.5,
+    #   min = 0
+    # ),
+    #   numericInput(
+    #     "footboxChamberWidth",
+    #     "Footbox Chamber Width (cm)",
+    #     10,
+    #     min = 0
+    #   ),
   ),
-  conditionalPanel(
-    condition = "input.footboxShape == 'Rectangle'",
-    numericInput("rectangleRatio", "Ratio", 1),
+  checkboxInput(
+    "baffleWallExtension",
+    label = p(
+      "Include Edge Chamber Wall",
+      bslib::tooltip(
+        bsicons::bs_icon("info-circle"),
+        "Use of this feature may cause issues. Please refer to the instruction tab if this occurs."
+      )
+    ),
+    FALSE
   ),
-  conditionalPanel(
-    condition = "input.footboxShape == 'Trapezoid'",
-    numericInput("trapezoidRatio", "Ratio", 0.5),
-    numericInput("trapezoidHeight", "Height", 10),
-  ),
-  checkboxInput("baffleWallExtension", label = p(
-    "Include Edge Chamber Wall",
-    bslib::tooltip(
-      bsicons::bs_icon("info-circle"),
-      "Use of this feature may cause issues. Please refer to the instruction tab if this occurs."
-    )
-  ), FALSE),
 )
 
 materials_accordion <- bslib::accordion_panel(
@@ -87,10 +130,9 @@ materials_accordion <- bslib::accordion_panel(
 
 instruction_card <- bslib::card(
   bslib::card_header("User Guide"),
-  verbatimTextOutput("test"),
+  # verbatimTextOutput("test"),
   uiOutput("intro")
 )
-
 
 manual_entry_card <- bslib::card(
   bslib::card_body(
@@ -112,8 +154,10 @@ selected_points_card <- bslib::card(
   actionButton("rem_point", "Remove Last Point"),
   hr(),
   h5("Selected Points"),
-  helpText("Click on any cell in the table to edit its value. Press the 'Enter' key to save the
-   change."),
+  helpText(
+    "Click on any cell in the table to edit its value. Press the 'Enter' key to save the
+   change."
+  ),
   DT::dataTableOutput("table"),
 )
 
@@ -130,18 +174,27 @@ outer_hor_card <- bslib::card(
   girafeOutput("outer_hor_plot")
 )
 
-footbox_card <- bslib::card(
-  girafeOutput("footbox_plot")
+inner_footbox_card <- bslib::card(
+  girafeOutput("inner_footbox_plot")
+)
+
+outer_footbox_card <- bslib::card(
+  girafeOutput("outer_footbox_plot")
 )
 
 plot_input_card <- bslib::card(
-  bslib::card_header("Define vertices manually or click to draw right side of the quilt"),
-  helpText("X must equal zero for the first point and the final point should be at the
+  bslib::card_header(
+    "Define vertices manually or click to draw right side of the quilt"
+  ),
+  helpText(
+    "X must equal zero for the first point and the final point should be at the
   origin (0,0).
   To prevent some issues with the baffle wall extension it is recommended that the penultimate
-  Y value also be zero."),
+  Y value also be zero."
+  ),
   verbatimTextOutput("hover_info"),
-  plotOutput("input_plot",
+  plotOutput(
+    "input_plot",
     height = 600,
     # add plot click functionality
     click = "plot_click",
@@ -184,7 +237,7 @@ ui <- bslib::page_navbar(
       style = bslib::css(grid_template_columns = "2fr 1fr"),
       plot_input_card,
       selected_points_card
-    )
+    ),
   ),
   bslib::nav_panel(
     title = "Output Dimensions",
@@ -211,11 +264,19 @@ ui <- bslib::page_navbar(
         )
       ),
       nav_panel(
-        "Footbox",
-        # Show card only if the design is not only vertical chambers
+        "Inner Footbox",
+        # Show card only if footbox shape is selected
         conditionalPanel(
           'input.footboxShape != "None"',
-          footbox_card
+          inner_footbox_card
+        )
+      ),
+      nav_panel(
+        "Outer Footbox",
+        # Show card only if footbox shape is selected
+        conditionalPanel(
+          'input.footboxShape != "None"',
+          outer_footbox_card
         )
       ),
     ),
@@ -228,13 +289,18 @@ ui <- bslib::page_navbar(
     title = "Temperature Rating",
     plotOutput("temp_rating"),
     gt_output("temp_model"),
-    helpText("There are many factors the impact the warmth of a quilt but measured loft serves as a guideline."),
+    helpText(
+      "There are many factors the impact the warmth of a quilt but measured loft serves as a guideline."
+    ),
   ),
   bslib::nav_panel(
     title = "Chamber Optimisation",
-    helpText("If we assume the material weights and chamber widths to remain constant we can attempt to optimise
-  for weight while retaining a target average loft."),
-    column(12,
+    helpText(
+      "If we assume the material weights and chamber widths to remain constant we can attempt to optimise
+  for weight while retaining a target average loft."
+    ),
+    column(
+      12,
       align = "center",
       numericInput("targetLoft", "Target Average Loft (cm)", 5, min = 0)
     ),
@@ -268,6 +334,9 @@ server <- function(input, output) {
     } else if (baffle_orientation == "horizontal") {
       a <- input$horizontalChamberWidth / 2
       b <- input$horizontalChamberHeight - input$baffleHeight
+    } else if (baffle_orientation == "footbox") {
+      a <- input$footboxChamberWidth / 2
+      b <- input$footboxChamberHeight - input$baffleHeight
     }
 
     # Calculate perimeter of ellipse
@@ -284,7 +353,12 @@ server <- function(input, output) {
   # Scale outer segments for differential cut
   # Vertical chambers are scaled on the X axis
   # Horizontal chambers are scaled in the Y axis
-  scale_geometry <- function(sf_poly, x_scaling_factor, y_scaling_factor, chamber_orientation) {
+  scale_geometry <- function(
+    sf_poly,
+    x_scaling_factor,
+    y_scaling_factor,
+    chamber_orientation
+  ) {
     coords <- st_coordinates(sf_poly)
     coords[, "X"] <- coords[, "X"] * x_scaling_factor
     coords[, "Y"] <- coords[, "Y"] * y_scaling_factor
@@ -311,7 +385,10 @@ server <- function(input, output) {
     adjusted_polygon <- st_sfc(zero_adj_polygon, crs = st_crs(sf_poly)) |>
       st_sf()
     zero_adj_polygon_seam <- st_polygon(list(coords_seam[, c("X", "Y")]))
-    adjusted_polygon_seam <- st_sfc(zero_adj_polygon_seam, crs = st_crs(sf_poly)) |>
+    adjusted_polygon_seam <- st_sfc(
+      zero_adj_polygon_seam,
+      crs = st_crs(sf_poly)
+    ) |>
       st_sf()
 
     output_list <- list(adjusted_polygon, adjusted_polygon_seam)
@@ -347,7 +424,11 @@ server <- function(input, output) {
           )
         }
       }
-      coords[, "X"] <- ifelse(coords[, "X"] < 0, coords[, "X"] - input$baffleHeight, coords[, "X"] + input$baffleHeight)
+      coords[, "X"] <- ifelse(
+        coords[, "X"] < 0,
+        coords[, "X"] - input$baffleHeight,
+        coords[, "X"] + input$baffleHeight
+      )
       altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
     } else if (chamber_orientation == "horizontal") {
       # Find indices of points with minimum y
@@ -378,7 +459,8 @@ server <- function(input, output) {
       # Expand polygon along the x-axis by baffle height
       # This added fabric in the outer horizontal is meant to factor in the last baffle as the outer material
       if (max(values$user_input$y) == input$orientationSplitHeight) {
-        coords[, "X"] <- ifelse(coords[, "X"] < 0,
+        coords[, "X"] <- ifelse(
+          coords[, "X"] < 0,
           coords[, "X"] - input$baffleHeight,
           coords[, "X"] + input$baffleHeight
         )
@@ -387,7 +469,8 @@ server <- function(input, output) {
       # Form polygon from coordinates
       altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
     }
-    baffle_wall_polygon <- st_sfc(altered_polygon, crs = st_crs(sf_poly)) |> st_sf()
+    baffle_wall_polygon <- st_sfc(altered_polygon, crs = st_crs(sf_poly)) |>
+      st_sf()
 
     return(baffle_wall_polygon)
   }
@@ -460,7 +543,9 @@ server <- function(input, output) {
     # Group by other and calculate differences in reference for points with same other value
     length_by_baffle <- data |>
       group_by(other) |>
-      summarise(baffle_length = if (n() > 1) abs(diff(reference)) else NA_real_) |>
+      reframe(
+        baffle_length = if (n() > 1) abs(diff(reference)) else NA_real_
+      ) |>
       filter(!is.na(baffle_length))
 
     total_baffle_length <- sum(length_by_baffle$baffle_length)
@@ -470,19 +555,28 @@ server <- function(input, output) {
 
   # Calculate base area/volume
   # Extrude 2D chambers to 3D shapes (Uses area of polygon to optimise accuracy with little overhead)
-  calculate_volume_by_chamber <- function(inner_section_poly, outer_section_poly, reference_axis) {
+  calculate_volume_by_chamber <- function(
+    inner_section_poly,
+    outer_section_poly,
+    reference_axis
+  ) {
     # Calculate area of polygons
     chamber_attributes_df <- data.frame(
       poly_id = 1:length(inner_section_poly),
       base_area = as.numeric(st_area(inner_section_poly))
     )
     # Extrude into 3D space
-    chamber_attributes_df$base_volume <- chamber_attributes_df$base_area * input$baffleHeight
+    chamber_attributes_df$base_volume <- chamber_attributes_df$base_area *
+      input$baffleHeight
 
     # Calculate volume of differential curve (if applicable)
-    calculate_chamber_width_at_reference <- function(sf_obj_inner, sf_obj_outer, reference_axis) {
+    calculate_chamber_width_at_reference <- function(
+      sf_obj_inner,
+      sf_obj_outer,
+      reference_axis
+    ) {
       if (!reference_axis %in% c("X", "Y")) {
-        stop("Reference axis must be 'X' or 'X'")
+        stop("Reference axis must be 'X' or 'Y'")
       }
 
       lengths_df <- data.frame(
@@ -504,13 +598,21 @@ server <- function(input, output) {
             reference_vals <- seq(bbox["xmin"], bbox["xmax"], by = 1)
             # Vertical lines at x values
             lines <- lapply(reference_vals, function(x) {
-              st_linestring(matrix(c(x, bbox["ymin"], x, bbox["ymax"]), ncol = 2, byrow = TRUE))
+              st_linestring(matrix(
+                c(x, bbox["ymin"], x, bbox["ymax"]),
+                ncol = 2,
+                byrow = TRUE
+              ))
             })
           } else if (reference_axis == "Y") {
             reference_vals <- seq(bbox["ymin"], bbox["ymax"], by = 1)
             # Horizontal lines at y values
             lines <- lapply(reference_vals, function(y) {
-              st_linestring(matrix(c(bbox["xmin"], y, bbox["xmax"], y), ncol = 2, byrow = TRUE))
+              st_linestring(matrix(
+                c(bbox["xmin"], y, bbox["xmax"], y),
+                ncol = 2,
+                byrow = TRUE
+              ))
             })
           }
 
@@ -521,7 +623,8 @@ server <- function(input, output) {
           intersections <- st_intersection(lines_sfc, st_geometry(poly))
 
           # Filter to keep only LINESTRING or MULTILINESTRING results
-          valid_types <- st_geometry_type(intersections) %in% c("LINESTRING", "MULTILINESTRING")
+          valid_types <- st_geometry_type(intersections) %in%
+            c("LINESTRING", "MULTILINESTRING")
           intersections <- intersections[valid_types]
 
           # Compute lengths of intersecting lines
@@ -534,7 +637,12 @@ server <- function(input, output) {
           # Round for floating point innaccuracies. Necessary for correct join.
           reference_vals <- round(reference_vals, 10)
           # Add lengths to a df. Remove last row.
-          lengths_df <- rbind(lengths_df, cbind(poly_id, reference_vals, lengths)[-length(lengths), ])
+          lengths_df <- rbind(
+            lengths_df,
+            suppressWarnings(cbind(poly_id, reference_vals, lengths))[
+              -length(lengths),
+            ]
+          )
         }
         return(lengths_df)
       }
@@ -545,19 +653,27 @@ server <- function(input, output) {
       outer_chamber_widths <- extract_lengths(sf_obj_outer, reference_axis)
       # Standardise axis between inner and outer layers
       if (reference_axis == "Y") {
-        outer_chamber_widths$reference_vals <- outer_chamber_widths$reference_vals + input$orientationSplitHeight
+        outer_chamber_widths$reference_vals <- outer_chamber_widths$reference_vals +
+          input$orientationSplitHeight
       }
 
       # Join inner and outer widths to a single dataframe
       attributes <- inner_chamber_widths |>
         rename(inner_widths = lengths) |>
-        inner_join(outer_chamber_widths |>
-          rename(outer_widths = lengths), by = c("poly_id", "reference_vals"))
+        inner_join(
+          outer_chamber_widths |>
+            rename(outer_widths = lengths),
+          by = c("poly_id", "reference_vals")
+        )
 
       return(attributes)
     }
     # DF with polygon ID, inner and outer chamber widths
-    attributes <- calculate_chamber_width_at_reference(inner_section_poly, outer_section_poly, reference_axis)
+    attributes <- calculate_chamber_width_at_reference(
+      inner_section_poly,
+      outer_section_poly,
+      reference_axis
+    )
 
     # Function to create a semi-ellipse and calculate their area from base and arc lengths
     calculate_semi_ellipse_area <- function(base_length, curve_length) {
@@ -609,25 +725,41 @@ server <- function(input, output) {
     }
 
     # Calculate the area of each slice of the differential curve if applicable
-    if ((reference_axis == "Y" & input$verticalChamberHeight > input$baffleHeight) |
-      (reference_axis == "X" & input$horizontalChamberHeight > input$baffleHeight)) {
+    if (
+      (reference_axis == "Y" &
+        input$verticalChamberHeight > input$baffleHeight) |
+        (reference_axis == "X" &
+          input$horizontalChamberHeight > input$baffleHeight)
+    ) {
       attributes$slice_area_differential <-
-        mapply(calculate_semi_ellipse_area, attributes$inner_widths, attributes$outer_widths)
-    } else if ((reference_axis == "Y" & input$verticalChamberHeight == input$baffleHeight) |
-      (reference_axis == "X" & input$horizontalChamberHeight == input$baffleHeight)) {
+        mapply(
+          calculate_semi_ellipse_area,
+          attributes$inner_widths,
+          attributes$outer_widths
+        )
+    } else if (
+      (reference_axis == "Y" &
+        input$verticalChamberHeight == input$baffleHeight) |
+        (reference_axis == "X" &
+          input$horizontalChamberHeight == input$baffleHeight)
+    ) {
       attributes$slice_area_differential <- 0
     }
 
     # Aggregate differential slice areas to approximate volume
     diff_volume_by_chamber <- attributes |>
       group_by(poly_id) |>
-      summarise(
+      reframe(
         # Sum area of each 1cm slice to estimate volume
         differential_volume = sum(slice_area_differential, na.rm = TRUE)
       )
 
     # Join volumes of base shapes and semi-ellipses that make up the differential cut
-    chamber_attributes <- inner_join(chamber_attributes_df, diff_volume_by_chamber, by = "poly_id") |>
+    chamber_attributes <- inner_join(
+      chamber_attributes_df,
+      diff_volume_by_chamber,
+      by = "poly_id"
+    ) |>
       mutate(total_volume = base_volume + differential_volume)
 
     return(list(chamber_attributes, attributes))
@@ -635,12 +767,12 @@ server <- function(input, output) {
 
   # Function to create an sf object of an ellipse/circle
   # perimeter: The target perimeter for the ellipse.
-  # ratio: The shape parameter (theta), defined as b/a, where 0 < ratio <= 1.
+  # ratio: The shape parameter (theta), defined as b/a, where 0 < ratio <= 5.
   #        A ratio of 1 is a circle, and a ratio close to 0 is a very flat ellipse.
   create_ellipse_sf <- function(perimeter, ratio) {
     # Validate the ratio input
-    if (ratio <= 0 || ratio > 2) {
-      stop("The 'ratio' parameter must be between 0 and 2 (exclusive of 0).")
+    if (ratio <= 0 || ratio > 5) {
+      stop("The 'ratio' parameter must be between 0 and 5 (exclusive of 0).")
     }
 
     # Helper function to calculate ellipse perimeter
@@ -692,11 +824,11 @@ server <- function(input, output) {
   }
 
   # perimeter: The target perimeter for the rectangle.
-  # ratio: The shape parameter, defined as height / width, where ratio > 0.
+  # ratio: The shape parameter, defined as height / width, where 0 < ratio <= 5.
   create_rectangle_sf <- function(perimeter, ratio) {
     # Validate the ratio input
-    if (ratio <= 0) {
-      stop("The 'ratio' parameter must be greater than 0.")
+    if (ratio <= 0 || ratio > 5) {
+      stop("The 'ratio' parameter must be between 0 and 5 (exclusive of 0).")
     }
 
     # Define central point
@@ -804,10 +936,12 @@ server <- function(input, output) {
   # - Average loft height H = h_r + (pi * b)/4
   # - Constraint: h_r = H - (pi * b)/2 >= 0, b >= 0
   # - Objective: Minimize total weight weight = outer layer weight + baffle weight
-  optimise_chambers <- function(orientation,
-                                attributes_by_cm,
-                                specifications_list,
-                                baffle_length_list) {
+  optimise_chambers <- function(
+    orientation,
+    attributes_by_cm,
+    specifications_list,
+    baffle_length_list
+  ) {
     # Function to compute the semi-elliptical arc length using numerical integration
     arc_length <- function(b, a) {
       integrand <- function(theta) {
@@ -824,14 +958,19 @@ server <- function(input, output) {
         return(Inf)
       }
       # Length of outer shell in cm increments in each chamber
-      L_curve_by_chamber_cm <- mapply(arc_length, b, attributes_by_cm$inner_widths / 2)
+      L_curve_by_chamber_cm <- mapply(
+        arc_length,
+        b,
+        attributes_by_cm$inner_widths / 2
+      )
       # Total area of outer shell used in chambers
       arc_area_total <- sum(L_curve_by_chamber_cm)
 
       # Existing shell weight to try to minimise
       # Inner layer not factored in because that is a constant.
       weight <- ((input$outerWeight / 10000) * arc_area_total) +
-        (baffle_length_list[[orientation]] * (input$baffleWeight / 10000)) * (h_r + (input$seamAllowance * 2))
+        (baffle_length_list[[orientation]] * (input$baffleWeight / 10000)) *
+          (h_r + (input$seamAllowance * 2))
 
       return(weight)
     }
@@ -853,25 +992,21 @@ server <- function(input, output) {
     return(out_l)
   }
 
-
-
-
   #---------------------------
   # Coordinate Inputs
   #---------------------------
   values <- shiny::reactiveValues()
 
   values$user_input <- data.frame(
-    x = c(0, 71, 71, 50, 0),
-    y = c(210, 210, 100, 0, 0)
+    x = c(0, 68, 72, 76, 76, 75, 72, 67, 62, 57, 52, rep(51, 4), 0),
+    y = c(190, 190, seq(175, 10, -15), 0, 0)
   )
 
-  # For validation
-  values$user_input <- data.frame(
-    x = c(0, 50, 50, 0),
-    y = c(100, 100, 0, 0)
-  )
-
+  # # For validation
+  # values$user_input <- data.frame(
+  #   x = c(0, 50, 50, 0),
+  #   y = c(100, 100, 0, 0)
+  # )
 
   # Reactive values for conditional output of outer layer plots
   output$full_horizontal <- reactive({
@@ -904,7 +1039,6 @@ server <- function(input, output) {
     max(values$user_input$y) == input$orientationSplitHeight
   })
 
-
   #---------------------------
   # Geometric Data List
   #---------------------------
@@ -930,7 +1064,12 @@ server <- function(input, output) {
     # Serves as inner layer w/o seam allowance
     inner <- st_sfc(sf::st_polygon(list(cbind(points$x, points$y))))
     # Add seam allowance w/ non-rounded vertices
-    inner_seam <- st_buffer(inner, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
+    inner_seam <- st_buffer(
+      inner,
+      input$seamAllowance,
+      joinStyle = "MITRE",
+      mitreLimit = 5
+    )
 
     # Initialise empty vectors and dfs
     outer_layer_area <- 0
@@ -945,67 +1084,135 @@ server <- function(input, output) {
       total_volume = double()
     )
 
-
     if (!full_horizontal_chambers()) {
       # Define bounding boxes for vertical/horizontal chamber segments
       vert_bbox <- st_sfc(st_polygon(list(cbind(
-        c(-max(points$x), max(points$x), max(points$x), -max(points$x), -max(points$x)),
-        c(max(points$y), max(points$y), input$orientationSplitHeight, input$orientationSplitHeight, max(points$y))
+        c(
+          -max(points$x),
+          max(points$x),
+          max(points$x),
+          -max(points$x),
+          -max(points$x)
+        ),
+        c(
+          max(points$y),
+          max(points$y),
+          input$orientationSplitHeight,
+          input$orientationSplitHeight,
+          max(points$y)
+        )
       ))))
       # Split base polygon into vertical/horizontal chamber segments
       vert_simple <- st_crop(inner, vert_bbox)
       # Add seam allowance w/ non-rounded vertices
-      inner_vert_simple_seam <- st_buffer(vert_simple, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
-
+      inner_vert_simple_seam <- st_buffer(
+        vert_simple,
+        input$seamAllowance,
+        joinStyle = "MITRE",
+        mitreLimit = 5
+      )
 
       vert_baffle_scale_factor <- scale_factor("vertical")
-      outer_vert_simple <- scale_geometry(vert_simple, vert_baffle_scale_factor, 1)
+      outer_vert_simple <- scale_geometry(
+        vert_simple,
+        vert_baffle_scale_factor,
+        1
+      )
 
       # Add fabric to outer layer to cover outer edge walls if checkbox selected
       if (input$baffleWallExtension & full_vertical_chambers()) {
-        outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "horizontal")
-        outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "vertical")
+        outer_vert_extend <- add_baffle_wall_allowance(
+          outer_vert_simple,
+          "horizontal"
+        )
+        outer_vert_extend <- add_baffle_wall_allowance(
+          outer_vert_simple,
+          "vertical"
+        )
       } else if (input$baffleWallExtension) {
-        outer_vert_extend <- add_baffle_wall_allowance(outer_vert_simple, "vertical")
+        outer_vert_extend <- add_baffle_wall_allowance(
+          outer_vert_simple,
+          "vertical"
+        )
       } else {
         outer_vert_extend <- outer_vert_simple
       }
 
-      outer_vert_simple_seam <- st_buffer(outer_vert_extend, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
+      outer_vert_simple_seam <- st_buffer(
+        outer_vert_extend,
+        input$seamAllowance,
+        joinStyle = "MITRE",
+        mitreLimit = 5
+      )
 
-      outer_vert_list <- adjust_y_zero(outer_vert_simple, outer_vert_simple_seam)
+      outer_vert_list <- adjust_y_zero(
+        outer_vert_simple,
+        outer_vert_simple_seam
+      )
       outer_vert_simple <- outer_vert_list[[1]]
       outer_vert_simple_seam <- outer_vert_list[[2]]
 
       outer_layer_area <- outer_layer_area + st_area(outer_vert_simple_seam)
 
-
       # Adjust y-axis to be in line
       vert_simple <- vert_simple + c(0, input$seamAllowance)
 
       # Create a regular grid that covers the outer layer segment
-      inner_vert_grid <- st_make_grid(vert_simple, cellsize = c(input$verticalChamberWidth, max(points$y) + input$seamAllowance), square = TRUE, offset = c(0, 0))
-      outer_vert_grid <- st_make_grid(outer_vert_simple, cellsize = c(input$verticalChamberWidth * vert_baffle_scale_factor, max(points$y * 2)), square = TRUE, offset = c(0, 0))
+      inner_vert_grid <- st_make_grid(
+        vert_simple,
+        cellsize = c(
+          input$verticalChamberWidth,
+          max(points$y) + input$seamAllowance
+        ),
+        square = TRUE,
+        offset = c(0, 0)
+      )
+      outer_vert_grid <- st_make_grid(
+        outer_vert_simple,
+        cellsize = c(
+          input$verticalChamberWidth * vert_baffle_scale_factor,
+          max(points$y * 2)
+        ),
+        square = TRUE,
+        offset = c(0, 0)
+      )
 
       # Split polygon into subpolygons(chambers) by grid
       inner_vert_segmented <- st_intersection(inner_vert_grid, vert_simple)
       inner_vert_segmented <- mirror_vert_chambers(inner_vert_segmented)
 
-      outer_vert_segmented <- st_intersection(outer_vert_grid, outer_vert_simple)
+      outer_vert_segmented <- st_intersection(
+        outer_vert_grid,
+        outer_vert_simple
+      )
       outer_vert_segmented <- mirror_vert_chambers(outer_vert_segmented)
 
-      outer_vert_simple_seam_vertices <- extract_polygon_vertices(outer_vert_simple_seam)
-      outer_vert_chamber_vertices <- extract_chamber_vertices(outer_vert_segmented)
+      outer_vert_simple_seam_vertices <- extract_polygon_vertices(
+        outer_vert_simple_seam
+      )
+      outer_vert_chamber_vertices <- extract_chamber_vertices(
+        outer_vert_segmented
+      )
 
       # Baffle length for only the section with vertical chambers
-      vert_baffle_length <- sum(calculate_baffle_lengths(outer_vert_chamber_vertices, "Y"))
+      vert_baffle_length <- sum(calculate_baffle_lengths(
+        outer_vert_chamber_vertices,
+        "Y"
+      ))
       # Running total of baffle length
       baffle_length <- baffle_length + vert_baffle_length
 
-      vert_chamber_volumes <- calculate_volume_by_chamber(inner_vert_segmented, outer_vert_segmented, "Y")[[1]]
-      vert_chamber_by_cm <- calculate_volume_by_chamber(inner_vert_segmented, outer_vert_segmented, "Y")[[2]]
+      vert_chamber_volumes <- calculate_volume_by_chamber(
+        inner_vert_segmented,
+        outer_vert_segmented,
+        "Y"
+      )[[1]]
+      vert_chamber_by_cm <- calculate_volume_by_chamber(
+        inner_vert_segmented,
+        outer_vert_segmented,
+        "Y"
+      )[[2]]
       chamber_volumes <- rbind(chamber_volumes, vert_chamber_volumes)
-
 
       # Plotting Data
       inner_chamber_vertices <- rbind(
@@ -1016,8 +1223,17 @@ server <- function(input, output) {
       inner_vert_segmented <- st_sf(inner_vert_segmented)
       st_geometry(inner_vert_segmented) <- "inner_segmented"
       inner_vert_segmented$tooltip <- paste0(
-        "Volume: ", round(vert_chamber_volumes$total_volume, 2), " cm^3",
-        "<br>Down Required: ", round((vert_chamber_volumes$total_volume / ((input$FP * 16.387064) / 28.349525440835)) * (1 + (input$overstuff / 100)), 2), " grams"
+        "Volume: ",
+        round(vert_chamber_volumes$total_volume, 2),
+        " cm^3",
+        "<br>Down Required: ",
+        round(
+          (vert_chamber_volumes$total_volume /
+            ((input$FP * 16.387064) / 28.349525440835)) *
+            (1 + (input$overstuff / 100)),
+          2
+        ),
+        " grams"
       )
 
       inner_segmented <- rbind(inner_segmented, inner_vert_segmented)
@@ -1025,8 +1241,20 @@ server <- function(input, output) {
 
     if (!full_vertical_chambers()) {
       hor_bbox <- st_sfc(st_polygon(list(cbind(
-        c(-max(points$x), max(points$x), max(points$x), -max(points$x), -max(points$x)),
-        c(min(points$y), min(points$y), input$orientationSplitHeight, input$orientationSplitHeight, min(points$y))
+        c(
+          -max(points$x),
+          max(points$x),
+          max(points$x),
+          -max(points$x),
+          -max(points$x)
+        ),
+        c(
+          min(points$y),
+          min(points$y),
+          input$orientationSplitHeight,
+          input$orientationSplitHeight,
+          min(points$y)
+        )
       ))))
 
       hor_simple <- st_crop(inner, hor_bbox)
@@ -1036,15 +1264,29 @@ server <- function(input, output) {
 
       # Add fabric to outer layer to cover outer edge walls if checkbox selected
       if (input$baffleWallExtension & full_horizontal_chambers()) {
-        outer_hor_extend <- add_baffle_wall_allowance(outer_hor_simple, "horizontal")
-        outer_hor_extend <- add_baffle_wall_allowance(outer_hor_extend, "vertical")
+        outer_hor_extend <- add_baffle_wall_allowance(
+          outer_hor_simple,
+          "horizontal"
+        )
+        outer_hor_extend <- add_baffle_wall_allowance(
+          outer_hor_extend,
+          "vertical"
+        )
       } else if (input$baffleWallExtension) {
-        outer_hor_extend <- add_baffle_wall_allowance(outer_hor_simple, "horizontal")
+        outer_hor_extend <- add_baffle_wall_allowance(
+          outer_hor_simple,
+          "horizontal"
+        )
       } else {
         outer_hor_extend <- outer_hor_simple
       }
 
-      outer_hor_simple_seam <- st_buffer(outer_hor_extend, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
+      outer_hor_simple_seam <- st_buffer(
+        outer_hor_extend,
+        input$seamAllowance,
+        joinStyle = "MITRE",
+        mitreLimit = 5
+      )
 
       outer_hor_list <- adjust_y_zero(outer_hor_simple, outer_hor_simple_seam)
       outer_hor_simple <- outer_hor_list[[1]]
@@ -1055,14 +1297,32 @@ server <- function(input, output) {
       hor_simple <- hor_simple + c(0, input$seamAllowance)
 
       # Create a regular grid that covers the outer layer segment
-      inner_hor_grid <- st_make_grid(hor_simple, cellsize = c((max(points$x * 2)), input$horizontalChamberWidth), square = TRUE)
-      outer_hor_grid <- st_make_grid(outer_hor_simple, cellsize = c((max(points$x * 2)), input$horizontalChamberWidth * hor_baffle_scale_factor), square = TRUE)
+      inner_hor_grid <- st_make_grid(
+        hor_simple,
+        cellsize = c((max(points$x * 2)), input$horizontalChamberWidth),
+        square = TRUE
+      )
+      outer_hor_grid <- st_make_grid(
+        outer_hor_simple,
+        cellsize = c(
+          (max(points$x * 2)),
+          input$horizontalChamberWidth * hor_baffle_scale_factor
+        ),
+        square = TRUE
+      )
 
       # Apply the rotation to the grid geometry so that the chambers complete from the top of the horizontal sections
       rot_angle <- pi
-      rotation_matrix <- matrix(c(cos(rot_angle), sin(rot_angle), -sin(rot_angle), cos(rot_angle)), nrow = 2)
-      inner_hor_grid <- st_geometry(inner_hor_grid) * rotation_matrix + c(0, max(st_coordinates(hor_simple)[, "Y"]) + input$seamAllowance)
-      outer_hor_grid <- st_geometry(outer_hor_grid) * rotation_matrix + c(0, max(st_coordinates(outer_hor_simple_seam)[, "Y"]))
+      rotation_matrix <- matrix(
+        c(cos(rot_angle), sin(rot_angle), -sin(rot_angle), cos(rot_angle)),
+        nrow = 2
+      )
+      inner_hor_grid <- st_geometry(inner_hor_grid) *
+        rotation_matrix +
+        c(0, max(st_coordinates(hor_simple)[, "Y"]) + input$seamAllowance)
+      outer_hor_grid <- st_geometry(outer_hor_grid) *
+        rotation_matrix +
+        c(0, max(st_coordinates(outer_hor_simple_seam)[, "Y"]))
 
       # Translate horizontal grid if baffle wall extension is selected
       if (input$baffleWallExtension) {
@@ -1072,14 +1332,29 @@ server <- function(input, output) {
       inner_hor_segmented <- st_intersection(inner_hor_grid, hor_simple)
       outer_hor_segmented <- st_intersection(outer_hor_grid, outer_hor_simple)
 
-      outer_hor_simple_seam_vertices <- extract_polygon_vertices(outer_hor_simple_seam)
-      outer_hor_chamber_vertices <- extract_chamber_vertices(outer_hor_segmented)
+      outer_hor_simple_seam_vertices <- extract_polygon_vertices(
+        outer_hor_simple_seam
+      )
+      outer_hor_chamber_vertices <- extract_chamber_vertices(
+        outer_hor_segmented
+      )
 
-      hor_baffle_length <- sum(calculate_baffle_lengths(outer_hor_chamber_vertices, "X"))
+      hor_baffle_length <- sum(calculate_baffle_lengths(
+        outer_hor_chamber_vertices,
+        "X"
+      ))
       baffle_length <- baffle_length + hor_baffle_length
 
-      hor_chamber_volumes <- calculate_volume_by_chamber(inner_hor_segmented, outer_hor_segmented, "X")[[1]]
-      hor_chamber_by_cm <- calculate_volume_by_chamber(inner_hor_segmented, outer_hor_segmented, "X")[[2]]
+      hor_chamber_volumes <- calculate_volume_by_chamber(
+        inner_hor_segmented,
+        outer_hor_segmented,
+        "X"
+      )[[1]]
+      hor_chamber_by_cm <- calculate_volume_by_chamber(
+        inner_hor_segmented,
+        outer_hor_segmented,
+        "X"
+      )[[2]]
       chamber_volumes <- rbind(chamber_volumes, hor_chamber_volumes)
 
       inner_chamber_vertices <- rbind(
@@ -1090,8 +1365,17 @@ server <- function(input, output) {
       inner_hor_segmented <- st_sf(inner_hor_segmented)
       st_geometry(inner_hor_segmented) <- "inner_segmented"
       inner_hor_segmented$tooltip <- paste0(
-        "Volume: ", round(hor_chamber_volumes$total_volume, 2), " cm^3",
-        "<br>Down Required: ", round((hor_chamber_volumes$total_volume / ((input$FP * 16.387064) / 28.349525440835)) * (1 + (input$overstuff / 100)), 2), " grams"
+        "Volume: ",
+        round(hor_chamber_volumes$total_volume, 2),
+        " cm^3",
+        "<br>Down Required: ",
+        round(
+          (hor_chamber_volumes$total_volume /
+            ((input$FP * 16.387064) / 28.349525440835)) *
+            (1 + (input$overstuff / 100)),
+          2
+        ),
+        " grams"
       )
 
       inner_segmented <- rbind(inner_segmented, inner_hor_segmented)
@@ -1105,27 +1389,96 @@ server <- function(input, output) {
 
     if (input$footboxShape != "None") {
       # Calculate perimeter of footbox
-      fb_perimeter <- 100
-
+      inner_coords <- st_coordinates(inner)
+      bottom_edge_x <- inner_coords[, "X"][
+        inner_coords[, "Y"] == min(inner_coords[, "Y"])
+      ]
+      fb_perimeter <- diff(range(bottom_edge_x, na.rm = TRUE))
 
       if (input$footboxShape == "Ellipse") {
-        footbox_sf <- create_ellipse_sf(fb_perimeter, input$ellipseRatio)
+        inner_footbox <- create_ellipse_sf(fb_perimeter, input$ratio)
       } else if (input$footboxShape == "Rectangle") {
-        footbox_sf <- create_rectangle_sf(fb_perimeter, input$rectangleRatio)
-      } else if (input$footboxShape == "Trapezoid") {
-        footbox_sf <- create_trapezoid_sf(fb_perimeter, input$trapezoidRatio, input$trapezoidHeight)
+        inner_footbox <- create_rectangle_sf(fb_perimeter, input$ratio)
+        # } else if (input$footboxShape == "Trapezoid") {
+        #   inner_footbox <- create_trapezoid_sf(fb_perimeter, input$trapezoidRatio, input$trapezoidHeight)
       }
 
-      footbox_sf_seam <- st_buffer(footbox_sf, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
-      footbox_outer <- st_buffer(footbox_sf, input$baffleHeight, joinStyle = "MITRE", mitreLimit = 5)
-      footbox_outer_seam <- st_buffer(footbox_outer, input$seamAllowance, joinStyle = "MITRE", mitreLimit = 5)
+      inner_footbox_seam <- st_buffer(
+        inner_footbox,
+        input$seamAllowance,
+        joinStyle = "MITRE",
+        mitreLimit = 5
+      )
+      outer_footbox <- st_buffer(
+        inner_footbox,
+        input$baffleHeight,
+        joinStyle = "MITRE",
+        mitreLimit = 5
+      )
+      outer_footbox_seam <- st_buffer(
+        outer_footbox,
+        input$seamAllowance,
+        joinStyle = "MITRE",
+        mitreLimit = 5
+      )
 
-      footbox_area <- st_area(footbox_outer)
+      # Define vertices of shape w/ seam allowance for cutting
+      inner_footbox_vertices <- extract_polygon_vertices(inner_footbox_seam)
+      outer_footbox_vertices <- extract_polygon_vertices(outer_footbox_seam)
+
+      # Volumes for version without differential baffles
+      footbox_area <- st_area(outer_footbox)
       footbox_volume <- footbox_area * input$baffleHeight
+      chamber_volumes <- rbind(
+        chamber_volumes,
+        c(0, footbox_area, footbox_volume, 0, footbox_volume)
+      )
 
-      chamber_volumes <- rbind(chamber_volumes, c(0, footbox_area, footbox_volume, 0, footbox_volume))
+      inner_footbox$tooltip <- paste0(
+        "Volume: ",
+        round(footbox_volume, 2),
+        " cm^3",
+        "<br>Down Required: ",
+        round(
+          (footbox_volume / ((input$FP * 16.387064) / 28.349525440835)) *
+            (1 + (input$overstuff / 100)),
+          2
+        ),
+        " grams"
+      )
+
+      # footbox_baffle_scale_factor <- scale_factor("footbox")
+
+      # # Create a regular grid that covers the outer layer segment
+      # inner_footbox_grid <- st_make_grid(inner_footbox, cellsize = c(input$footboxChamberWidth, fb_perimeter/2), square = TRUE, offset = c(0,-fb_perimeter/4))
+      # outer_footbox_grid <- st_make_grid(outer_footbox, cellsize = c(input$footboxChamberWidth * footbox_baffle_scale_factor, fb_perimeter/2), square = TRUE, offset = c(0,-fb_perimeter/4))
+
+      # # Split polygon into subpolygons(chambers) by grid
+      # inner_footbox_segmented <- st_intersection(inner_footbox_grid, inner_footbox)
+      # inner_footbox_segmented <- mirror_vert_chambers(inner_footbox_segmented)
+
+      # outer_footbox_segmented <- st_intersection(outer_footbox_grid, outer_footbox)
+      # outer_footbox_segmented <- mirror_vert_chambers(outer_footbox_segmented)
+
+      # inner_footbox_chamber_vertices <- extract_chamber_vertices(inner_footbox_segmented)
+      # outer_footbox_chamber_vertices <- extract_chamber_vertices(outer_footbox_segmented)
+
+      # # Baffle length for footbox (excluding external ring)
+      # footbox_baffle_length <- sum(calculate_baffle_lengths(outer_footbox_chamber_vertices, "Y"))
+      # # Running total of baffle length
+      # baffle_length <- baffle_length + footbox_baffle_length
+
+      # footbox_chamber_volumes <- calculate_volume_by_chamber(inner_footbox_segmented, outer_footbox_segmented, "Y")[[1]]
+      # footbox_chamber_by_cm <- calculate_volume_by_chamber(inner_footbox_segmented, outer_footbox_segmented, "Y")[[2]]
+      # chamber_volumes <- rbind(chamber_volumes, footbox_chamber_volumes)
+
+      # inner_footbox_segmented <- st_sf(inner_footbox_segmented)
+      # st_geometry(inner_footbox_segmented) <- "inner_footbox_segmented"
+      # inner_footbox_segmented$tooltip <- paste0(
+      #   "Volume: ", round(footbox_chamber_volumes$total_volume, 2), " cm^3",
+      #   "<br>Down Required: ", round((footbox_chamber_volumes$total_volume / ((input$FP * 16.387064) / 28.349525440835)) * (1 + (input$overstuff / 100)), 2), " grams"
+      # )
     }
-
 
     ### -------------------------------------------------------------
     ## Specifications
@@ -1138,12 +1491,14 @@ server <- function(input, output) {
     # Volume / FP = weight
     FP_metric <- (input$FP * 16.387064) / 28.349525440835
     if (max(all_selected_points_y()) != input$orientationSplitHeight) {
-      average_loft_vert <- sum(vert_chamber_volumes$total_volume) / st_area(vert_simple)
+      average_loft_vert <- sum(vert_chamber_volumes$total_volume) /
+        st_area(vert_simple)
     } else {
       average_loft_vert <- 0
     }
     if (input$orientationSplitHeight != 0) {
-      average_loft_hor <- sum(hor_chamber_volumes$total_volume) / st_area(hor_simple)
+      average_loft_hor <- sum(hor_chamber_volumes$total_volume) /
+        st_area(hor_simple)
     } else {
       average_loft_hor <- 0
     }
@@ -1154,8 +1509,8 @@ server <- function(input, output) {
       outer_layer_area <- outer_layer_area
       baffle_material_length <- baffle_length
     } else {
-      inner_layer_area <- st_area(inner_seam) + st_area(footbox_sf_seam)
-      outer_layer_area <- outer_layer_area + st_area(footbox_outer_seam)
+      inner_layer_area <- st_area(inner_seam) + st_area(inner_footbox_seam)
+      outer_layer_area <- outer_layer_area + st_area(outer_footbox_seam)
       baffle_material_length <- baffle_length + fb_perimeter
     }
     if (input$baffleHeight != 0) {
@@ -1168,13 +1523,21 @@ server <- function(input, output) {
     # ---Weight---
     inner_layer_weight <- inner_layer_area * (input$innerWeight / 10000)
     outer_layer_weight <- outer_layer_area * (input$outerWeight / 10000)
-    baffle_material_weight <- baffle_material_area * (input$baffleWeight / 10000)
-    shell_weight <- inner_layer_weight + outer_layer_weight + baffle_material_weight
+    baffle_material_weight <- baffle_material_area *
+      (input$baffleWeight / 10000)
+    shell_weight <- inner_layer_weight +
+      outer_layer_weight +
+      baffle_material_weight
     # # Number of grams needed to fill chambers
     grams_down <- volume / FP_metric
     # Adjusted for over/underfill
     grams_down_adj <- grams_down * (1 + (input$overstuff / 100))
-    total_weight <- sum(inner_layer_weight, outer_layer_weight, baffle_material_weight, grams_down_adj)
+    total_weight <- sum(
+      inner_layer_weight,
+      outer_layer_weight,
+      baffle_material_weight,
+      grams_down_adj
+    )
 
     # Named list/dict of specifications
     specifications_l <- list(
@@ -1202,43 +1565,83 @@ server <- function(input, output) {
     if (!full_horizontal_chambers()) {
       baffle_length_l$vertical <- vert_baffle_length
       # Generate optimal values for baffle height and max vertical chamber height
-      optim_vals$Vertical <- optimise_chambers("vertical", vert_chamber_by_cm, specifications_l, baffle_length_l)
+      optim_vals$Vertical <- optimise_chambers(
+        "vertical",
+        vert_chamber_by_cm,
+        specifications_l,
+        baffle_length_l
+      )
     }
 
     if (!full_vertical_chambers()) {
       baffle_length_l$horizontal <- hor_baffle_length
       # Generate optimal values for baffle height and max vertical chamber height
-      optim_vals$Horizontal <- optimise_chambers("horizontal", hor_chamber_by_cm, specifications_l, baffle_length_l)
+      optim_vals$Horizontal <- optimise_chambers(
+        "horizontal",
+        hor_chamber_by_cm,
+        specifications_l,
+        baffle_length_l
+      )
     }
-
 
     c(
       list(test = test),
       list(specifications = specifications_l), # DF of quilt specs
       list(optimisation = optim_vals),
-      list(inner_layer = list(inner, inner_seam, inner_seam_vertices, inner_segmented, inner_chamber_vertices)), # Inner layer polygons
-
+      list(
+        inner_layer = list(
+          inner,
+          inner_seam,
+          inner_seam_vertices,
+          inner_segmented,
+          inner_chamber_vertices
+        )
+      ), # Inner layer polygons
       # Named list/pseudo-dictionary of output data
       if (!full_horizontal_chambers()) {
         # Outer layer polygons with vertical chambers
-        list(outer_layer_vert = list(outer_vert_segmented, outer_vert_simple_seam, outer_vert_simple_seam_vertices, outer_vert_chamber_vertices))
+        list(
+          outer_layer_vert = list(
+            outer_vert_segmented,
+            outer_vert_simple_seam,
+            outer_vert_simple_seam_vertices,
+            outer_vert_chamber_vertices
+          )
+        )
       } else {
         list(outer_layer_vert = list())
       },
       if (!full_vertical_chambers()) {
         # Outer layer polygons with horizontal chambers
         list(
-          outer_layer_hor = list(outer_hor_segmented, outer_hor_simple_seam, outer_hor_simple_seam_vertices, outer_hor_chamber_vertices) # Outer layer polygons with horizontal chambers
+          outer_layer_hor = list(
+            outer_hor_segmented,
+            outer_hor_simple_seam,
+            outer_hor_simple_seam_vertices,
+            outer_hor_chamber_vertices
+          ) # Outer layer polygons with horizontal chambers
         )
       } else {
         list(outer_layer_vert = list())
       },
       if (input$footboxShape != "None") {
         list(
-          footbox = list(footbox_sf, footbox_sf_seam, footbox_outer, footbox_outer_seam) # Footbox polygons
+          inner_footbox = list(
+            inner_footbox,
+            inner_footbox_seam,
+            inner_footbox_vertices
+          ), #, inner_footbox_segmented, inner_footbox_chamber_vertices), # Inner footbox polygons
+          outer_footbox = list(
+            outer_footbox,
+            outer_footbox_seam,
+            outer_footbox_vertices
+          ) #, outer_footbox_segmented, outer_footbox_chamber_vertices) # Outer footbox polygons
         )
       } else {
-        list(footbox = list())
+        list(
+          inner_footbox = list(),
+          outer_footbox = list()
+        )
       }
     )
   })
@@ -1246,15 +1649,61 @@ server <- function(input, output) {
   #---------------------------
   # Temerature Reference Data
   #---------------------------
-  temp_rating_df <- data.frame(
-    Temperature = c(10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, -28.89, 10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, 10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, -28.89),
-    Loft = c(3.81, 5.69, 7.59, 9.5, 11.4, 13.28, 15.19, 17.09, 2.54, 3.81, 5.08, 6.35, 7.62, 8.89, 10.16, 3.05, 3.81, 4.57, 5.59, 6.60, 7.62, 8.89, 10.16),
-    Source = c(rep("Timmermade", 8), rep("Enlightened Equipment/Warbonnet", 7), rep("BPL", 8))
+  BPL_rating <- data.frame(
+    Temperature = c(10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, -28.89),
+    Loft = c(3.05, 3.81, 4.57, 5.59, 6.60, 7.62, 8.89, 10.16),
+    Source = "BPL"
+  )
+
+  katabatic_rating <- data.frame(
+    Temperature = c(4.44, -1.11, -5.56, -9.44, -15),
+    Loft = c(4.5, 5.7, 7, 8.2, 9.5),
+    Source = "Katabatic"
+  )
+
+  c_equation_rating <- data.frame(
+    Temperature = c(10.5, 3.5, -3.5, -10.5, -17.5),
+    Loft = c(2, 4, 6, 8, 10),
+    Source = "17.5°C - (Loft * 3.5)"
+  )
+
+  timmermade_new_rating <- data.frame(
+    Temperature = c(10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, -28.89),
+    Loft = c(3.81, 5.69, 7.59, 9.5, 11.4, 13.28, 15.19, 17.09),
+    Source = "Timmermade (New)"
+  )
+
+  timmermade_old_rating <- data.frame(
+    Temperature = c(10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33, -28.89),
+    Loft = c(2.79, 4.95, 6.60, 8.26, 9.91, 11.56, 13.21, 14.86),
+    Source = "Timmermade (Old)"
+  )
+
+  EE_rating <- data.frame(
+    Temperature = c(10, 4.44, -1.11, -6.67, -12.22, -17.78, -23.33),
+    Loft = c(2.54, 3.81, 5.08, 6.35, 7.62, 8.89, 10.16),
+    Source = "Enlightened Equipment/Warbonnet"
+  )
+
+  nunatak_rating <- data.frame(
+    Temperature = c(7.22, 1.67, -2.22, -5.56, -7.78, -12.22),
+    Loft = c(2.54, 4.064, 5.33, 6.35, 7.366, 9.144),
+    Source = "Nunatak"
+  )
+
+  temp_rating_df <- rbind(
+    c_equation_rating,
+    BPL_rating,
+    EE_rating,
+    katabatic_rating,
+    timmermade_old_rating,
+    timmermade_new_rating,
+    nunatak_rating
   )
 
   # Generate regression models: one for each Source group
-  temp_models <- temp_rating_df %>%
-    group_by(Source) %>%
+  temp_models <- temp_rating_df |>
+    group_by(Source) |>
     do(model = lm(Temperature ~ Loft, data = .))
 
   ## --- Page: Input Dimensions ---
@@ -1293,7 +1742,7 @@ server <- function(input, output) {
     values$user_input <- rem_row
   })
 
-  output$table <- DT::renderDataTable({
+  output$input_table <- DT::renderDataTable({
     DT::datatable(
       values$user_input,
       rownames = FALSE,
@@ -1309,14 +1758,17 @@ server <- function(input, output) {
 
   output$hover_info <- shiny::renderPrint({
     hover <- input$plot_hover
-    cat("X value:", formatC(round_any(hover$x, 0.5), digits = 1, format = "f"), "\n")
+    cat(
+      "X value:",
+      formatC(round_any(hover$x, 0.5), digits = 1, format = "f"),
+      "\n"
+    )
     cat("Y value:", formatC(round_any(hover$y, 0.5), digits = 1, format = "f"))
   })
 
   # -------------------------
 
   ## --- Page: Output Dimensions ---
-
 
   #   data <- data_list()$cross_section
 
@@ -1338,90 +1790,139 @@ server <- function(input, output) {
     tagList(
       h5("How To Use"),
       h6("Input Dimensions"),
-      p("Enter the coordinates for each vertex of the right side of your desired shape."),
+      p(
+        "Enter the coordinates for each vertex of the right side of your desired shape."
+      ),
       h6("Sidebar Parameters"),
       p("Customize the parameters in the sidebar to meet your requirements."),
       h6("Parameter Definitions:"),
       tags$ul(
-        tags$li("Longest Dimension: Sets the axis limits for the Input Dimensions graph."),
-        tags$li("Baffle Orientation Change Height: Divides the shape into vertical chambers
+        tags$li(
+          "Longest Dimension: Sets the axis limits for the Input Dimensions graph."
+        ),
+        tags$li(
+          "Baffle Orientation Change Height: Divides the shape into vertical chambers
         above this height and horizontal chambers below. For a single chamber orientation,
-        set this to the minimum or maximum y-value."),
-        tags$li("Baffle Height: The height of the finished baffle, excluding seam allowance.
-         Set to zero for sewn-through baffles."),
-        tags$li("Max Vertical/Horizontal Chamber Height: TThe distance from the chamber's center
+        set this to the minimum or maximum y-value."
+        ),
+        tags$li(
+          "Baffle Height: The height of the finished baffle, excluding seam allowance.
+         Set to zero for sewn-through baffles."
+        ),
+        tags$li(
+          "Maximum Chamber Height: TThe distance from the chamber's center
          base to the highest point of the semi-ellipse. For a non-differential cut, set this
-         equal to the baffle height."),
-        tags$li("Vertical/Horizontal Chamber Width: The maximum distance between baffle walls."),
+         equal to the baffle height."
+        ),
+        tags$li(
+          "Chamber Width: The maximum distance between baffle walls."
+        ),
       ),
       h5("Output"),
       h6("Shape Plot Legend"),
       tags$ul(
-        tags$li("Blue circles denote the outer edge vertices of the shape, including seam allowance."),
-        tags$li("Red circles denote the vertices of the chambers and guide where to sew baffles."),
-        tags$li("Scrolling over chamber areas of the Inner Layer and Footbox tabs will display
+        tags$li(
+          "Blue circles denote the outer edge vertices of the shape, including seam allowance."
+        ),
+        tags$li(
+          "Red circles denote the vertices of the chambers and guide where to sew baffles."
+        ),
+        tags$li(
+          "Scrolling over chamber areas of the Inner Layer and Footbox tabs will display
         information about the volume of the chamber and the amount of down required to fill them to
-        your desired level of over/underfill."),
+        your desired level of over/underfill."
+        ),
       ),
       h6("Temperature Rating"),
-      p("Temperature ratings are very subjective in an area where there are no standardised
+      p(
+        "Temperature ratings are very subjective in an area where there are no standardised
           tests. Larger manufacturers tend to advertise limit ratings whereas smaller producers tend
           to value customer satisfaction (and warmth) so the ratings are more conservative. The
           Temperature Rating tab allows you to see where your projected average loft sits relative
-          to these estimates."),
+          to these estimates."
+      ),
       h6("Chamber Optimisation"),
-      p("This is for the gram weenies amoung us! If you have decided on you ideal target loft,
+      p(
+        "This is for the gram weenies amoung us! If you have decided on you ideal target loft,
       chamber widths and material weights then you can use this feature to optimise the baffle
        height and maximum chamber height for the lowest weight finished product. Generally it
        should favour a slight differential cut but you may want to increase this difference to
         make full use of the main purpose of a differential cut, limiting down compression when
-         force is applied from inside."),
+         force is applied from inside."
+      ),
       h5("Notes"),
       tags$ul(
-        tags$li("For a non-differential cut, volume is calculated by multiplying the area by the
+        tags$li(
+          "For a non-differential cut, volume is calculated by multiplying the area by the
          baffle height. For a differential cut, the volume is estimated by calculating the area
           of a semi-ellipse (where a = chamber width / 2 and b = max chamber height - baffle
           height) at 1cm intervals (integer values of the parallel axis) and summing these areas
-          for an accurate approximation of the chamber's upper segment volume."),
-        tags$li("The footbox shape is defined by a single parameter, the ratio between the length
+          for an accurate approximation of the chamber's upper segment volume."
+        ),
+        tags$li(
+          "The footbox shape is defined by a single parameter, the ratio between the length
          of the two sides (rectangular) or the ratio between the semi-minor and semi-major axes
          (ellipse). In order to rotate the footbox 90 degrees use 1 / current value. This also
-         serves to change the chamber orientation."),
-        tags$li("In the context of sewn-through baffles, such as those popular in down garments,
+         serves to change the chamber orientation."
+        ),
+        tags$li(
+          "In the context of sewn-through baffles, such as those popular in down garments,
           it cannot be guaranteed that using a differential cut with alleviate all shrinking of
           the dimension perpendicular to the chamber orientation but it may help to alleviate it.
           A better potential option would be to assume that the inner layer will curve (and thus
-          shorten) and instead use the outer layer dimensions for both the inner and outer layers."),
+          shorten) and instead use the outer layer dimensions for both the inner and outer layers."
+        ),
       ),
       h6("Troubleshooting"),
       tags$ul(
-        tags$li("If the footbox appears incorrectly sized please note that the perimeter of the footbox is
+        tags$li(
+          "If the footbox appears incorrectly sized please note that the perimeter of the footbox is
       equal to the length of the bottom edge of the inner layer, minus the seam allowances, i.e. where
-      x = 0 on the input graph."),
-        tags$li("If you encounter errors adding the edge chamber walls, you can manually add the length of
+      x = 0 on the input graph."
+        ),
+        tags$li(
+          "If you encounter errors adding the edge chamber walls, you can manually add the length of
        the baffle height to the outer layer perpendicular to the chamber direction on each external
-        edge. Failing to do this will reduce the capacity of the edge chambers of the finished product."),
+        edge. Failing to do this will reduce the capacity of the edge chambers of the finished product."
+        ),
       ),
       h6("Acknowledgements"),
-      p("This app was created to extend on the work of CatSplat's Underquilt Calculator which has been an
-      invaluable tool to the community."),
+      p(
+        "This app was created to extend on the work of CatSplat's Underquilt Calculator which has been an
+      invaluable tool to the community."
+      ),
       tags$p(
         "Please direct any queries or issues to the  ",
         tags$a(
-          href = "https://github.com/danielpetterson/down-quilt-designer", "Github repository"
-        ), ".",
+          href = "https://github.com/danielpetterson/down-quilt-designer",
+          "Github repository"
+        ),
+        ".",
       ),
       # img(src = "path/to/your/image1.png", width = "100%") # Optional: Add an image
     )
   })
 
-
   output$inner_plot <- renderGirafe({
     validate(
-      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
-      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
     )
 
     req(data_list)
@@ -1431,7 +1932,6 @@ server <- function(input, output) {
     chambers <- data_list()$inner_layer[[4]]
     chamber_vertices <- data_list()$inner_layer[[5]]
 
-
     gg_poly_inner <- ggplot() +
       geom_sf_interactive(data = with_seam) +
       geom_sf_interactive(data = inner_simple) +
@@ -1439,12 +1939,17 @@ server <- function(input, output) {
       geom_sf_interactive(
         data = seam_vertices,
         aes(tooltip = tooltip, data_id = id),
-        color = "blue", size = 1, shape = 21
+        color = "blue",
+        size = 1,
+        shape = 21
       ) +
       geom_sf_interactive(
         data = chamber_vertices,
         aes(tooltip = tooltip, data_id = id),
-        color = "red", size = 0.5, shape = 5, fill = "white"
+        color = "red",
+        size = 0.5,
+        shape = 5,
+        fill = "white"
       ) +
       geom_vline(xintercept = 0, linetype = "dotted", linewidth = 1) +
       theme(legend.position = "none") +
@@ -1457,10 +1962,24 @@ server <- function(input, output) {
     req(data_list)
 
     validate(
-      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
-      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
     )
 
     gg_poly_vert <- ggplot()
@@ -1471,24 +1990,27 @@ server <- function(input, output) {
       seam_vertices <- data_list()$outer_layer_vert[[3]]
       chamber_vertices <- data_list()$outer_layer_vert[[4]]
 
-
       gg_poly_vert <- gg_poly_vert +
         geom_sf_interactive(data = with_seam) +
         geom_sf_interactive(data = vert_simple) +
         geom_sf_interactive(
           data = seam_vertices,
           aes(tooltip = tooltip, data_id = id),
-          color = "blue", size = 1, shape = 21
+          color = "blue",
+          size = 1,
+          shape = 21
         ) +
         geom_sf_interactive(
           data = chamber_vertices,
           aes(tooltip = tooltip, data_id = id),
-          color = "red", size = 0.5, shape = 5, fill = "white"
+          color = "red",
+          size = 0.5,
+          shape = 5,
+          fill = "white"
         ) +
         geom_vline(xintercept = 0, linetype = "dotted", linewidth = 1) +
         theme_minimal()
     }
-
 
     girafe(ggobj = gg_poly_vert)
   })
@@ -1497,10 +2019,24 @@ server <- function(input, output) {
     req(data_list)
 
     validate(
-      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
-      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
     )
 
     gg_poly_hor <- ggplot()
@@ -1517,12 +2053,17 @@ server <- function(input, output) {
         geom_sf_interactive(
           data = seam_vertices,
           aes(tooltip = tooltip, data_id = id),
-          color = "blue", size = 1, shape = 21
+          color = "blue",
+          size = 1,
+          shape = 21
         ) +
         geom_sf_interactive(
           data = chamber_vertices,
           aes(tooltip = tooltip, data_id = id),
-          color = "red", size = 0.5, shape = 5, fill = "white"
+          color = "red",
+          size = 0.5,
+          shape = 5,
+          fill = "white"
         ) +
         geom_vline(xintercept = 0, linetype = "dotted", linewidth = 1) +
         theme_minimal()
@@ -1531,51 +2072,138 @@ server <- function(input, output) {
     girafe(ggobj = gg_poly_hor)
   })
 
-  output$footbox_plot <- renderGirafe({
+  output$inner_footbox_plot <- renderGirafe({
     req(data_list)
 
     validate(
-      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
-      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
     )
 
-    gg_footbox <- ggplot()
+    gg_footbox_inner <- ggplot()
 
     if (input$footboxShape != "None") {
-      inner <- data_list()$footbox[[1]]
-      with_seam <- data_list()$footbox[[2]]
-      # seam_vertices <- data_list()$outer_layer_hor[[3]]
-      # chamber_vertices <- data_list()$outer_layer_hor[[4]]
+      inner <- data_list()$inner_footbox[[1]]
+      inner_seam <- data_list()$inner_footbox[[2]]
+      seam_vertices <- data_list()$inner_footbox[[3]]
+      # chambers <- data_list()$inner_footbox[[4]]
+      # chamber_vertices <- data_list()$inner_footbox[[5]]
 
-      gg_footbox <- gg_footbox +
-        geom_sf_interactive(data = with_seam) +
-        geom_sf_interactive(data = inner) +
-        # geom_sf_interactive(
-        #   data = seam_vertices,
-        #   aes(tooltip = tooltip, data_id = id),
-        #   color = "blue", size = 1, shape = 21
-        # ) +
+      gg_footbox_inner <- gg_footbox_inner +
+        geom_sf_interactive(data = inner_seam) +
+        geom_sf_interactive(data = inner, aes(tooltip = tooltip)) +
+        # geom_sf_interactive(data = chambers) +#, aes(tooltip = tooltip)) +
+        geom_sf_interactive(
+          data = seam_vertices,
+          aes(tooltip = tooltip, data_id = id),
+          color = "blue",
+          size = 1,
+          shape = 21
+        ) +
         # geom_sf_interactive(
         #   data = chamber_vertices,
         #   aes(tooltip = tooltip, data_id = id),
         #   color = "red", size = 0.5, shape = 5, fill = "white"
         # ) +
-        geom_vline(xintercept = 0, linetype = "dotted", linewidth = 1) +
+        geom_vline(xintercept = 0, linetype = "dotted", linewidth = 0.5) +
         theme_minimal()
     }
 
-    girafe(ggobj = gg_footbox)
+    girafe(ggobj = gg_footbox_inner)
   })
 
+  output$outer_footbox_plot <- renderGirafe({
+    req(data_list)
+
+    validate(
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
+    )
+
+    gg_footbox_outer <- ggplot()
+
+    if (input$footboxShape != "None") {
+      outer <- data_list()$outer_footbox[[1]]
+      outer_seam <- data_list()$outer_footbox[[2]]
+      seam_vertices <- data_list()$outer_footbox[[3]]
+      # chambers <- data_list()$outer_footbox[[4]]
+      # chamber_vertices <- data_list()$inner_footbox[[5]]
+
+      gg_footbox_outer <- gg_footbox_outer +
+        geom_sf_interactive(data = outer_seam) +
+        geom_sf_interactive(data = outer) +
+        # geom_sf_interactive(data = chambers) +#, aes(tooltip = tooltip)) +
+        geom_sf_interactive(
+          data = seam_vertices,
+          aes(tooltip = tooltip, data_id = id),
+          color = "blue",
+          size = 1,
+          shape = 21
+        ) +
+        # geom_sf_interactive(
+        #   data = chamber_vertices,
+        #   aes(tooltip = tooltip, data_id = id),
+        #   color = "red", size = 0.5, shape = 5, fill = "white"
+        # ) +
+        geom_vline(xintercept = 0, linetype = "dotted", linewidth = 0.5) +
+        theme_minimal()
+    }
+
+    girafe(ggobj = gg_footbox_outer)
+  })
 
   output$specifications <- gt::render_gt({
     validate(
-      need(input$verticalChamberHeight >= input$baffleHeight, "Error: Max Vertical Chamber Height is less than Baffle Height."),
-      need(input$horizontalChamberHeight >= input$baffleHeight, "Error: Max Horizontal Chamber Height is less than Baffle Height."),
-      need((input$horizontalChamberHeight - input$baffleHeight) <= (input$horizontalChamberWidth / 2), "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."),
-      need((input$verticalChamberHeight - input$baffleHeight) <= (input$verticalChamberWidth / 2), "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width.")
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
     )
 
     spec_data <- data_list()$specifications
@@ -1586,8 +2214,10 @@ server <- function(input, output) {
 
     # Format decimal places and units
     decimals <- c(0, 2, 0, 2, 2, 2, 0, 2, 0, 2, 2, 2, 0)
-    spec_df$Value <- mapply(function(num, dec) format(round(num, dec), nsmall = dec),
-      spec_df$Value, decimals,
+    spec_df$Value <- mapply(
+      function(num, dec) format(round(num, dec), nsmall = dec),
+      spec_df$Value,
+      decimals,
       SIMPLIFY = FALSE
     )
     spec_units <- c(
@@ -1608,7 +2238,6 @@ server <- function(input, output) {
     )
     spec_df$Value <- paste(spec_df$Value, spec_units, sep = " ")
 
-
     spec_df |>
       gt(rowname_col = "Metric") |>
       cols_align(
@@ -1617,7 +2246,11 @@ server <- function(input, output) {
       ) |>
       cols_width(Metric ~ px(400)) |>
       tab_footnote(
-        footnote = paste0("Adjusted to include ", input$overfill, "% overstuff."),
+        footnote = paste0(
+          "Adjusted to include ",
+          input$overfill,
+          "% overstuff."
+        ),
         locations = cells_stub(rows = "Grams of Down")
       ) |>
       tab_footnote(
@@ -1640,11 +2273,17 @@ server <- function(input, output) {
       geom_point() +
       geom_smooth(method = "lm", se = FALSE) +
       geom_vline(
-        aes(xintercept = vert_intercept, linetype = "Average Loft Vertical Chambers"),
+        aes(
+          xintercept = vert_intercept,
+          linetype = "Average Loft Vertical Chambers"
+        ),
         color = "red",
       ) +
       geom_vline(
-        aes(xintercept = hor_intercept, linetype = "Average Loft Horizontal Chambers"),
+        aes(
+          xintercept = hor_intercept,
+          linetype = "Average Loft Horizontal Chambers"
+        ),
         color = "blue",
       ) +
       theme_minimal()
@@ -1656,22 +2295,30 @@ server <- function(input, output) {
     hor_intercept <- spec_data[["Average Loft Horizontal Chambers"]]
 
     # Predict temperature rating for each Source
-    vertical_chamber_predictions <- temp_models %>%
+    vertical_chamber_predictions <- temp_models |>
       mutate(
-        predicted_temperature = round(predict(model, newdata = data.frame(Loft = vert_intercept)), 2),
+        predicted_temperature = round(
+          predict(model, newdata = data.frame(Loft = vert_intercept)),
+          2
+        ),
         chamber_orientation = "Vertical"
       )
 
-    horizontal_chamber_predictions <- temp_models %>%
+    horizontal_chamber_predictions <- temp_models |>
       mutate(
-        predicted_temperature = round(predict(model, newdata = data.frame(Loft = hor_intercept)), 2),
+        predicted_temperature = round(
+          predict(model, newdata = data.frame(Loft = hor_intercept)),
+          2
+        ),
         chamber_orientation = "Horizontal"
       )
 
-    temp_predictions <- rbind(vertical_chamber_predictions, horizontal_chamber_predictions) |>
+    temp_predictions <- rbind(
+      vertical_chamber_predictions,
+      horizontal_chamber_predictions
+    ) |>
       select(Source, chamber_orientation, predicted_temperature) |>
       arrange(Source)
-
 
     # Output the predicted values
     temp_predictions |>
@@ -1698,48 +2345,19 @@ server <- function(input, output) {
       Parameter = sapply(split_data, `[`, 2),
       "Optimal Value" = round(optim_data, 2)
     ) |>
-      mutate(Parameter = recode(Parameter,
-        "optim_baffle_height" = "Baffle Height",
-        "optim_max_chamber_height" = "Maximum Chamber Height",
-        .default = "keep_as_is"
-      )) |>
+      mutate(
+        Parameter = recode(
+          Parameter,
+          "optim_baffle_height" = "Baffle Height",
+          "optim_max_chamber_height" = "Maximum Chamber Height",
+          .default = "keep_as_is"
+        )
+      ) |>
       rename_with(~ gsub("\\.", " ", .))
-
-
-
-
-    # # Create a data frame from the named list
-    # df <- data.frame(
-    #   "Loft Height (m)" = data_list$Heights,
-    #   "Flight Distance (m)" = data_list$Distances
-    # )
-
-    # # Create gt table
-    # gt_table <- gt(data = df) %>%
-    #   tab_header(
-    #     title = "Loft Data Summary",
-    #     subtitle = paste("Target Average Loft:", input$target_loft)
-    #   ) %>%
-    #   cols_label(
-    #     `Loft Height (m)` = "Loft Height (meters)",
-    #     `Flight Distance (m)` = "Flight Distance (meters)"
-    #   ) %>%
-    #   tab_options(
-    #     table.font.size = 12,
-    #     heading.title.font.size = 16,
-    #     heading.subtitle.font.size = 14
-    #   )
-
-    # gt_table
   })
 
-
-
-
   output$test <- shiny::renderPrint({
-    # if (!is.null(test)) {
     data_list()$test
-    # }
   })
 }
 
