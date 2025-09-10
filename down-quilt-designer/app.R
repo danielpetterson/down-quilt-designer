@@ -12,7 +12,7 @@ library(gt)
 options(shiny.sanitize.errors = FALSE)
 
 ## TODO:
-# Need chambers and vertices for footbox
+# Fix extend baffle chamber wall - use st_buffer after adjustment.
 # Outer footbox baffle lines - should be same as inner
 
 # Issues:
@@ -305,6 +305,10 @@ ui <- bslib::page_navbar(
       numericInput("targetLoft", "Target Average Loft (cm)", 5, min = 0)
     ),
     gt_output("optim_table")
+  ),
+  bslib::nav_panel(
+    title = "Technical Information",
+    uiOutput("tech_info")
   )
 )
 #---------------------------
@@ -998,7 +1002,7 @@ server <- function(input, output) {
   values <- shiny::reactiveValues()
 
   values$user_input <- data.frame(
-    x = c(0, 68, 72, 76, 76, 75, 72, 67, 62, 57, 52, rep(51, 4), 0),
+    x = c(0, 68, 72, 76, 76, 75, 72, 67, 62, 57, 52, rep(50, 4), 0),
     y = c(190, 190, seq(175, 10, -15), 0, 0)
   )
 
@@ -1388,19 +1392,32 @@ server <- function(input, output) {
     inner_seam_vertices <- extract_polygon_vertices(inner_seam)
 
     if (input$footboxShape != "None") {
-      # Calculate perimeter of footbox
-      inner_coords <- st_coordinates(inner)
-      bottom_edge_x <- inner_coords[, "X"][
-        inner_coords[, "Y"] == min(inner_coords[, "Y"])
-      ]
-      fb_perimeter <- diff(range(bottom_edge_x, na.rm = TRUE))
+      # Calculate perimeter of footbox layers
+      footbox_perimeter <- function(sf_poly) {
+        coords <- st_coordinates(sf_poly)
+        bottom_edge_x <- coords[, "X"][
+          coords[, "Y"] == min(coords[, "Y"])
+        ]
+        perimeter <- diff(range(bottom_edge_x, na.rm = TRUE))
+
+        return(perimeter)
+      }
+
+      fb_inner_perimeter <- footbox_perimeter(inner)
+      if (!full_vertical_chambers()) {
+        fb_outer_perimeter <- footbox_perimeter(outer_hor_simple)
+      } else {
+        fb_outer_perimeter <- footbox_perimeter(outer_vert_simple)
+      }
 
       if (input$footboxShape == "Ellipse") {
-        inner_footbox <- create_ellipse_sf(fb_perimeter, input$ratio)
+        inner_footbox <- create_ellipse_sf(fb_inner_perimeter, input$ratio)
+        outer_footbox <- create_ellipse_sf(fb_outer_perimeter, input$ratio)
       } else if (input$footboxShape == "Rectangle") {
-        inner_footbox <- create_rectangle_sf(fb_perimeter, input$ratio)
+        inner_footbox <- create_rectangle_sf(fb_inner_perimeter, input$ratio)
+        outer_footbox <- create_rectangle_sf(fb_outer_perimeter, input$ratio)
         # } else if (input$footboxShape == "Trapezoid") {
-        #   inner_footbox <- create_trapezoid_sf(fb_perimeter, input$trapezoidRatio, input$trapezoidHeight)
+        #   inner_footbox <- create_trapezoid_sf(fb_inner_perimeter, input$trapezoidRatio, input$trapezoidHeight)
       }
 
       inner_footbox_seam <- st_buffer(
@@ -1409,12 +1426,12 @@ server <- function(input, output) {
         joinStyle = "MITRE",
         mitreLimit = 5
       )
-      outer_footbox <- st_buffer(
-        inner_footbox,
-        input$baffleHeight,
-        joinStyle = "MITRE",
-        mitreLimit = 5
-      )
+      # outer_footbox <- st_buffer(
+      #   inner_footbox,
+      #   input$baffleHeight,
+      #   joinStyle = "MITRE",
+      #   mitreLimit = 5
+      # )
       outer_footbox_seam <- st_buffer(
         outer_footbox,
         input$seamAllowance,
@@ -1450,8 +1467,8 @@ server <- function(input, output) {
       # footbox_baffle_scale_factor <- scale_factor("footbox")
 
       # # Create a regular grid that covers the outer layer segment
-      # inner_footbox_grid <- st_make_grid(inner_footbox, cellsize = c(input$footboxChamberWidth, fb_perimeter/2), square = TRUE, offset = c(0,-fb_perimeter/4))
-      # outer_footbox_grid <- st_make_grid(outer_footbox, cellsize = c(input$footboxChamberWidth * footbox_baffle_scale_factor, fb_perimeter/2), square = TRUE, offset = c(0,-fb_perimeter/4))
+      # inner_footbox_grid <- st_make_grid(inner_footbox, cellsize = c(input$footboxChamberWidth, fb_inner_perimeter/2), square = TRUE, offset = c(0,-fb_inner_perimeter/4))
+      # outer_footbox_grid <- st_make_grid(outer_footbox, cellsize = c(input$footboxChamberWidth * footbox_baffle_scale_factor, fb_inner_perimeter/2), square = TRUE, offset = c(0,-fb_inner_perimeter/4))
 
       # # Split polygon into subpolygons(chambers) by grid
       # inner_footbox_segmented <- st_intersection(inner_footbox_grid, inner_footbox)
@@ -1511,7 +1528,7 @@ server <- function(input, output) {
     } else {
       inner_layer_area <- st_area(inner_seam) + st_area(inner_footbox_seam)
       outer_layer_area <- outer_layer_area + st_area(outer_footbox_seam)
-      baffle_material_length <- baffle_length + fb_perimeter
+      baffle_material_length <- baffle_length + fb_inner_perimeter
     }
     if (input$baffleHeight != 0) {
       baffle_material_height <- input$baffleHeight + (2 * input$seamAllowance)
@@ -1828,7 +1845,7 @@ server <- function(input, output) {
           "Red circles denote the vertices of the chambers and guide where to sew baffles."
         ),
         tags$li(
-          "Scrolling over chamber areas of the Inner Layer and Footbox tabs will display
+          "Scrolling over chamber areas of the Inner Layer and Inner Footbox tabs will display
         information about the volume of the chamber and the amount of down required to fill them to
         your desired level of over/underfill."
         ),
@@ -1866,6 +1883,11 @@ server <- function(input, output) {
          serves to change the chamber orientation."
         ),
         tags$li(
+          "The footbox is currently limited to a non-differential cut. If you need this functionality
+           urgently you can recreate the footbox shape by replacing the Innder Footbox vertices in the
+           Input Dimensions tab."
+        ),
+        tags$li(
           "In the context of sewn-through baffles, such as those popular in down garments,
           it cannot be guaranteed that using a differential cut with alleviate all shrinking of
           the dimension perpendicular to the chamber orientation but it may help to alleviate it.
@@ -1878,7 +1900,7 @@ server <- function(input, output) {
         tags$li(
           "If the footbox appears incorrectly sized please note that the perimeter of the footbox is
       equal to the length of the bottom edge of the inner layer, minus the seam allowances, i.e. where
-      x = 0 on the input graph."
+      x = 0 on the input graph. Ensure that this length is correct when defining the shape."
         ),
         tags$li(
           "If you encounter errors adding the edge chamber walls, you can manually add the length of
@@ -1899,7 +1921,6 @@ server <- function(input, output) {
         ),
         ".",
       ),
-      # img(src = "path/to/your/image1.png", width = "100%") # Optional: Add an image
     )
   })
 
@@ -2318,7 +2339,7 @@ server <- function(input, output) {
       horizontal_chamber_predictions
     ) |>
       select(Source, chamber_orientation, predicted_temperature) |>
-      arrange(Source)
+      arrange(desc(chamber_orientation), Source)
 
     # Output the predicted values
     temp_predictions |>
@@ -2354,6 +2375,26 @@ server <- function(input, output) {
         )
       ) |>
       rename_with(~ gsub("\\.", " ", .))
+  })
+
+  output$tech_info <- shiny::renderUI({
+    tagList(
+      h5("Measurements"),
+      h6("Baffle Dimensions"),
+      # Insert image of baffle slice
+      # img(src = "../down-quilt-designer/assets/CatsplatBaffleCrossSection.png", width = "100%")
+      h6("Footbox Dimensions"),
+      p(
+        "The perimeters of the layers of the footbox cap/plug is equivalent to the length of the
+         bottom edge of the respective layer of the quilt excluding the seam allowance."
+      ),
+      h6("Footbox Connection"),
+      p(""),
+      tags$ul(
+        tags$li(),
+        tags$li(),
+      )
+    )
   })
 
   output$test <- shiny::renderPrint({
