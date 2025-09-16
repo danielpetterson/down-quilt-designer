@@ -12,8 +12,6 @@ library(gt)
 options(shiny.sanitize.errors = FALSE)
 
 ## TODO:
-# Fix extend baffle chamber wall - use st_buffer after adjustment.
-# Outer footbox baffle lines - should be same as inner
 
 # Issues:
 # Create_trapezoid_sf scale
@@ -57,7 +55,7 @@ design_accordion <- bslib::accordion_panel(
   numericInput(
     "verticalChamberWidth",
     "Vertical Chamber Width (cm)",
-    12.5,
+    13,
     min = 0
   ),
   numericInput(
@@ -130,7 +128,7 @@ materials_accordion <- bslib::accordion_panel(
 
 instruction_card <- bslib::card(
   bslib::card_header("User Guide"),
-  # verbatimTextOutput("test"),
+  verbatimTextOutput("test"),
   uiOutput("intro")
 )
 
@@ -400,83 +398,143 @@ server <- function(input, output) {
     return(output_list)
   }
 
-  # Adds baffle wall height to the outermost vertical and horizontal chambers
-  add_baffle_wall_allowance <- function(sf_poly, chamber_orientation) {
-    coords <- st_coordinates(sf_poly)[, c("X", "Y")]
-    # Add outer chamber wall
-    if (chamber_orientation == "vertical") {
-      if (input$orientationSplitHeight == 0) {
-        # Find indices of points with minimum y
-        min_y <- min(coords[, "Y"])
-        min_y_indices <- which(abs(coords[, "Y"] - min_y) < 1e-10)
+  invert_polygon <- function(polygon) {
+    # Invert y-coordinates (reflect across x-axis, y = 0)
+    coords <- st_coordinates(polygon)
+    coords[, "Y"] <- -coords[, "Y"]
 
-        # Select the most extreme x values on each side where y is the minimum
-        idx1 <- min_y_indices[1]
-        idx2 <- min_y_indices[length(min_y_indices)]
-
-        # Create new points
-        new_point1 <- c(coords[idx1, 1], min_y - input$baffleHeight)
-        new_point2 <- c(coords[idx2, 1], min_y - input$baffleHeight)
-
-        # Insert new points
-        if (idx1 < nrow(coords)) {
-          coords <- rbind(
-            coords[1:idx1, ],
-            new_point1,
-            new_point2,
-            coords[(idx2):nrow(coords), ]
-          )
-        }
-      }
-      coords[, "X"] <- ifelse(
-        coords[, "X"] < 0,
-        coords[, "X"] - input$baffleHeight,
-        coords[, "X"] + input$baffleHeight
-      )
-      altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
-    } else if (chamber_orientation == "horizontal") {
-      # Find indices of points with minimum y
-      min_y <- min(coords[, "Y"])
-      min_y_indices <- which(abs(coords[, "Y"] - min_y) < 1e-10) # Use tolerance for floating-point
-
-      # Select three points with minimum y
-      idx1 <- min_y_indices[1]
-      idx2 <- min_y_indices[2]
-      idx3 <- min_y_indices[3]
-
-      # Create new points to add to polygon
-      new_point1 <- c(coords[idx1, 1], min_y - input$baffleHeight)
-      new_point2 <- c(coords[idx2, 1], min_y - input$baffleHeight)
-      new_point3 <- c(coords[idx3, 1], min_y - input$baffleHeight)
-
-      # Insert new points
-      if (idx1 < nrow(coords)) {
-        coords <- rbind(
-          coords[1:idx1, ],
-          new_point1,
-          new_point2,
-          new_point3,
-          coords[(idx3):nrow(coords), ]
-        )
-      }
-
-      # Expand polygon along the x-axis by baffle height
-      # This added fabric in the outer horizontal is meant to factor in the last baffle as the outer material
-      if (max(values$user_input$y) == input$orientationSplitHeight) {
-        coords[, "X"] <- ifelse(
-          coords[, "X"] < 0,
-          coords[, "X"] - input$baffleHeight,
-          coords[, "X"] + input$baffleHeight
-        )
-      }
-
-      # Form polygon from coordinates
-      altered_polygon <- st_polygon(list(coords[, c("X", "Y")]))
+    # Get geometry type and ring structure
+    geom_type <- st_geometry_type(polygon)[1]
+    rings <- if (geom_type == "POLYGON") {
+      coords[, "L1"]
+    } else {
+      coords[, c("L1", "L2")]
     }
-    baffle_wall_polygon <- st_sfc(altered_polygon, crs = st_crs(sf_poly)) |>
-      st_sf()
 
-    return(baffle_wall_polygon)
+    # Reconstruct geometry
+    if (geom_type == "POLYGON") {
+      new_geom <- lapply(unique(rings), function(r) {
+        ring_coords <- coords[rings == r, c("X", "Y")]
+        # Ensure ring is closed
+        if (!all(ring_coords[1, ] == ring_coords[nrow(ring_coords), ])) {
+          ring_coords <- rbind(ring_coords, ring_coords[1, ])
+        }
+        st_polygon(list(ring_coords))
+      }) %>%
+        st_sfc(crs = st_crs(polygon))
+    } else {
+      # MULTIPOLYGON case
+      new_geom <- lapply(unique(rings[, "L1"]), function(p) {
+        poly_rings <- unique(rings[rings[, "L1"] == p, "L2"])
+        rings_list <- lapply(poly_rings, function(r) {
+          ring_coords <- coords[
+            rings[, "L1"] == p & rings[, "L2"] == r,
+            c("X", "Y")
+          ]
+          if (!all(ring_coords[1, ] == ring_coords[nrow(ring_coords), ])) {
+            ring_coords <- rbind(ring_coords, ring_coords[1, ])
+          }
+          ring_coords
+        })
+        st_polygon(rings_list)
+      }) %>%
+        st_sfc(crs = st_crs(polygon))
+    }
+
+    # Create new sf object
+    inverted_poly <- st_sf(geometry = new_geom, st_drop_geometry(polygon))
+
+    # Validate geometry
+    if (!all(st_is_valid(inverted_poly))) {
+      warning("Resulting geometry may be invalid; attempting to fix")
+      inverted_poly <- st_make_valid(inverted_poly)
+    }
+
+    return(inverted_poly)
+  }
+
+  # Adds baffle wall height to the outermost vertical and horizontal chambers
+  add_baffle_wall_allowance <- function(
+    sf_poly,
+    seam_allowance,
+    baffle_height
+  ) {
+    # Define expanded polygons
+    poly1 <- st_buffer(
+      sf_poly,
+      seam_allowance + baffle_height,
+      joinStyle = "MITRE",
+      mitreLimit = 5
+    )
+    poly2 <- st_buffer(
+      sf_poly,
+      seam_allowance,
+      joinStyle = "MITRE",
+      mitreLimit = 5
+    )
+
+    # Get coordinates of both polygons
+    coords1 <- st_coordinates(poly1)[, c("X", "Y")]
+    coords2 <- st_coordinates(poly2)[, c("X", "Y")]
+
+    # Find ymax in both polygons
+    ymax1 <- max(coords1[, "Y"])
+    ymax2 <- max(coords2[, "Y"])
+
+    # Identify indices of ymax coordinates in poly1
+    ymax1_idx <- which(coords1[, "Y"] == ymax1)
+
+    # Get x-coordinate(s) of ymax in poly2
+    ymax2_x <- coords2[coords2[, "Y"] == ymax2, "X"]
+
+    # Replace ymax coordinates in poly1 with ymax2 value
+    coords1[ymax1_idx, "Y"] <- ymax2
+
+    # Reconstruct the geometry for poly1
+    geom_type <- st_geometry_type(poly1)[1]
+
+    if (geom_type == "POLYGON") {
+      # Get ring structure (L1 from st_coordinates)
+      rings1 <- st_coordinates(poly1)[, "L1"]
+      new_geom <- lapply(unique(rings1), function(r) {
+        ring_coords <- coords1[rings1 == r, c("X", "Y")]
+        # Ensure ring is closed
+        if (!all(ring_coords[1, ] == ring_coords[nrow(ring_coords), ])) {
+          ring_coords <- rbind(ring_coords, ring_coords[1, ])
+        }
+        st_polygon(list(ring_coords))
+      }) %>%
+        st_sfc(crs = st_crs(poly1))
+    } else {
+      # MULTIPOLYGON case
+      rings1 <- st_coordinates(poly1)[, c("L1", "L2")]
+      new_geom <- lapply(unique(rings1[, "L1"]), function(p) {
+        poly_rings <- unique(rings1[rings1[, "L1"] == p, "L2"])
+        rings <- lapply(poly_rings, function(r) {
+          ring_coords <- coords1[
+            rings1[, "L1"] == p & rings1[, "L2"] == r,
+            c("X", "Y")
+          ]
+          if (!all(ring_coords[1, ] == ring_coords[nrow(ring_coords), ])) {
+            ring_coords <- rbind(ring_coords, ring_coords[1, ])
+          }
+          ring_coords
+        })
+        st_polygon(rings)
+      }) %>%
+        st_sfc(crs = st_crs(poly1))
+    }
+
+    # Create new sf object
+    expanded_poly <- st_sf(geometry = new_geom, st_drop_geometry(poly1))
+
+    # Validate geometry
+    if (!all(st_is_valid(expanded_poly))) {
+      warning("Resulting geometry may be invalid; attempting to fix")
+      expanded_poly <- st_make_valid(expanded_poly)
+    }
+
+    return(expanded_poly)
   }
 
   # Function to mirror chamber polygons across the y-axis
@@ -644,6 +702,7 @@ server <- function(input, output) {
           lengths_df <- rbind(
             lengths_df,
             suppressWarnings(cbind(poly_id, reference_vals, lengths))[
+              # cbind(poly_id, reference_vals, lengths)[
               -length(lengths),
             ]
           )
@@ -714,9 +773,18 @@ server <- function(input, output) {
 
       # Uniroott to minimise objective function
       # Use a very small positive number for the lower bound to avoid issues at zero
-      solution <- uniroot(
-        f = objective_function,
-        interval = c(1e-09, a)
+      # Use tryCatch to handle errors relating to bisection method of rootfinding
+      solution <- tryCatch(
+        {
+          uniroot(
+            f = objective_function,
+            interval = c(1e-09, a)
+          )
+        },
+        error = function(e) {
+          # This ensures that the calculated area for a problematic diff slice should be ~0
+          return(list(root = 0.0001))
+        }
       )
 
       # Semi-minor axis 'b'
@@ -1123,27 +1191,8 @@ server <- function(input, output) {
         1
       )
 
-      # Add fabric to outer layer to cover outer edge walls if checkbox selected
-      if (input$baffleWallExtension & full_vertical_chambers()) {
-        outer_vert_extend <- add_baffle_wall_allowance(
-          outer_vert_simple,
-          "horizontal"
-        )
-        outer_vert_extend <- add_baffle_wall_allowance(
-          outer_vert_simple,
-          "vertical"
-        )
-      } else if (input$baffleWallExtension) {
-        outer_vert_extend <- add_baffle_wall_allowance(
-          outer_vert_simple,
-          "vertical"
-        )
-      } else {
-        outer_vert_extend <- outer_vert_simple
-      }
-
       outer_vert_simple_seam <- st_buffer(
-        outer_vert_extend,
+        outer_vert_simple,
         input$seamAllowance,
         joinStyle = "MITRE",
         mitreLimit = 5
@@ -1240,6 +1289,32 @@ server <- function(input, output) {
         " grams"
       )
 
+      # Add fabric to outer layer to cover outer edge walls if checkbox selected
+      if (input$baffleWallExtension & full_vertical_chambers()) {
+        outer_vert_simple_seam <- st_buffer(
+          outer_vert_simple,
+          input$seamAllowance + input$baffleHeight,
+          joinStyle = "MITRE",
+          mitreLimit = 5
+        )
+        outer_vert_simple_seam_vertices <- extract_polygon_vertices(
+          outer_vert_simple_seam
+        )
+      } else if (input$baffleWallExtension) {
+        outer_vert_simple_inverted <- invert_polygon(outer_vert_simple)
+        outer_vert_simple_seam_inverted <- add_baffle_wall_allowance(
+          outer_vert_simple_inverted,
+          input$seamAllowance,
+          input$baffleHeight
+        )
+        outer_vert_simple_seam <- invert_polygon(
+          outer_vert_simple_seam_inverted
+        )
+        outer_vert_simple_seam_vertices <- extract_polygon_vertices(
+          outer_vert_simple_seam
+        )
+      }
+
       inner_segmented <- rbind(inner_segmented, inner_vert_segmented)
     }
 
@@ -1266,27 +1341,27 @@ server <- function(input, output) {
       hor_baffle_scale_factor <- scale_factor("horizontal")
       outer_hor_simple <- scale_geometry(hor_simple, 1, hor_baffle_scale_factor)
 
-      # Add fabric to outer layer to cover outer edge walls if checkbox selected
-      if (input$baffleWallExtension & full_horizontal_chambers()) {
-        outer_hor_extend <- add_baffle_wall_allowance(
-          outer_hor_simple,
-          "horizontal"
-        )
-        outer_hor_extend <- add_baffle_wall_allowance(
-          outer_hor_extend,
-          "vertical"
-        )
-      } else if (input$baffleWallExtension) {
-        outer_hor_extend <- add_baffle_wall_allowance(
-          outer_hor_simple,
-          "horizontal"
-        )
-      } else {
-        outer_hor_extend <- outer_hor_simple
-      }
+      # # Add fabric to outer layer to cover outer edge walls if checkbox selected
+      # if (input$baffleWallExtension & full_horizontal_chambers()) {
+      #   outer_hor_extend <- add_baffle_wall_allowance(
+      #     outer_hor_simple,
+      #     "horizontal"
+      #   )
+      #   outer_hor_extend <- add_baffle_wall_allowance(
+      #     outer_hor_extend,
+      #     "vertical"
+      #   )
+      # } else if (input$baffleWallExtension) {
+      #   outer_hor_extend <- add_baffle_wall_allowance(
+      #     outer_hor_simple,
+      #     "horizontal"
+      #   )
+      # } else {
+      #   outer_hor_extend <- outer_hor_simple
+      # }
 
       outer_hor_simple_seam <- st_buffer(
-        outer_hor_extend,
+        outer_hor_simple,
         input$seamAllowance,
         joinStyle = "MITRE",
         mitreLimit = 5
@@ -1328,10 +1403,10 @@ server <- function(input, output) {
         rotation_matrix +
         c(0, max(st_coordinates(outer_hor_simple_seam)[, "Y"]))
 
-      # Translate horizontal grid if baffle wall extension is selected
-      if (input$baffleWallExtension) {
-        outer_hor_grid <- st_geometry(outer_hor_grid) + c(0, input$baffleHeight)
-      }
+      # # Translate horizontal grid if baffle wall extension is selected
+      # if (input$baffleWallExtension) {
+      #   outer_hor_grid <- st_geometry(outer_hor_grid) + c(0, input$baffleHeight)
+      # }
 
       inner_hor_segmented <- st_intersection(inner_hor_grid, hor_simple)
       outer_hor_segmented <- st_intersection(outer_hor_grid, outer_hor_simple)
@@ -1383,6 +1458,28 @@ server <- function(input, output) {
       )
 
       inner_segmented <- rbind(inner_segmented, inner_hor_segmented)
+
+      # Add fabric to outer layer to cover outer edge walls if checkbox selected
+      if (input$baffleWallExtension & full_horizontal_chambers()) {
+        outer_hor_simple_seam <- st_buffer(
+          outer_hor_simple,
+          input$seamAllowance + input$baffleHeight,
+          joinStyle = "MITRE",
+          mitreLimit = 5
+        )
+        outer_hor_simple_seam_vertices <- extract_polygon_vertices(
+          outer_hor_simple_seam
+        )
+      } else if (input$baffleWallExtension) {
+        outer_hor_simple_seam <- add_baffle_wall_allowance(
+          outer_hor_simple,
+          input$seamAllowance,
+          input$baffleHeight
+        )
+        outer_hor_simple_seam_vertices <- extract_polygon_vertices(
+          outer_hor_simple_seam
+        )
+      }
     }
 
     inner_list <- adjust_y_zero(inner, inner_seam)
@@ -1639,7 +1736,7 @@ server <- function(input, output) {
           ) # Outer layer polygons with horizontal chambers
         )
       } else {
-        list(outer_layer_vert = list())
+        list(outer_layer_hor = list())
       },
       if (input$footboxShape != "None") {
         list(
