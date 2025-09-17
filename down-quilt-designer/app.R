@@ -12,10 +12,11 @@ library(gt)
 options(shiny.sanitize.errors = FALSE)
 
 ## TODO:
+# Add constraint to chamber optimisation to ensure outer circumference is sufficient
+# Add plot of chambers in arc
 
 # Issues:
 # Create_trapezoid_sf scale
-# Warning with cbind(poly_id, reference_vals, lengths): number of rows of result is not a multiple of vector length (arg 1)
 
 test <- NULL
 
@@ -112,14 +113,14 @@ design_accordion <- bslib::accordion_panel(
         "Use of this feature may cause issues. Please refer to the instruction tab if this occurs."
       )
     ),
-    FALSE
+    TRUE
   ),
 )
 
 materials_accordion <- bslib::accordion_panel(
   "Materials",
   icon = bsicons::bs_icon("sliders"),
-  numericInput("FP", "Fill Power", 800, min = 500, max = 1000, step = 50),
+  numericInput("FP", "Fill Power", 850, min = 500, max = 1000, step = 50),
   numericInput("overstuff", "% Overstuff", 20),
   numericInput("innerWeight", "Inner Fabric Weight (gsm)", 35, min = 0),
   numericInput("outerWeight", "Outer Fabric Weight (gsm)", 35, min = 0),
@@ -128,6 +129,7 @@ materials_accordion <- bslib::accordion_panel(
 
 instruction_card <- bslib::card(
   bslib::card_header("User Guide"),
+  # For validation. Comment out in production.
   verbatimTextOutput("test"),
   uiOutput("intro")
 )
@@ -146,9 +148,9 @@ manual_entry_card <- bslib::card(
 selected_points_card <- bslib::card(
   bslib::card_header("Input"),
   manual_entry_card,
-  # button to add vertices
+  # Button to add vertices
   actionButton("add_point", "Add Point"),
-  # button to remove last vertex
+  # Button to remove last vertex
   actionButton("rem_point", "Remove Last Point"),
   hr(),
   h5("Selected Points"),
@@ -156,27 +158,37 @@ selected_points_card <- bslib::card(
     "Click on any cell in the table to edit its value. Press the 'Enter' key to save the
    change."
   ),
-  DT::dataTableOutput("table"),
+  # Table of selected vertices for right side
+  DT::dataTableOutput("input_table"),
 )
 
 inner_card <- bslib::card(
   helpText("Scroll over the plot to see the chamber and vertices attributes."),
+  # Plot of inner layer dimensions
+  # Includes baffle endpoints and volume information
   girafeOutput("inner_plot")
 )
 
 outer_vert_card <- bslib::card(
+  # Plot of outer layer with vertical baffles/chambers
   girafeOutput("outer_vert_plot")
 )
 
 outer_hor_card <- bslib::card(
+  # Plot of outer layer with horizontal baffles/chambers
   girafeOutput("outer_hor_plot")
 )
 
 inner_footbox_card <- bslib::card(
+  # Plot of inner footbox cap/plug layer
+  # Circumference = length of bottom edge of inner layer - seam allowances
+  # Includes volume information
   girafeOutput("inner_footbox_plot")
 )
 
 outer_footbox_card <- bslib::card(
+  # Plot of outer footbox cap/plug layer
+  # Circumference = length of bottom edge of lower outer layer segment - seam allowances
   girafeOutput("outer_footbox_plot")
 )
 
@@ -190,13 +202,15 @@ plot_input_card <- bslib::card(
   To prevent some issues with the baffle wall extension it is recommended that the penultimate
   Y value also be zero."
   ),
+  # X/Y values for mouse hover
   verbatimTextOutput("hover_info"),
+  # Reactive plot that displays selected points and accepts new points via click
   plotOutput(
     "input_plot",
     height = 600,
-    # add plot click functionality
+    # Add plot click functionality
     click = "plot_click",
-    # add the hover options
+    # Add the hover options
     hover = hoverOpts(
       id = "plot_hover",
       nullOutside = TRUE
@@ -209,22 +223,20 @@ plot_input_card <- bslib::card(
 #---------------------------
 ui <- bslib::page_navbar(
   title = "Down Quilt Designer",
-  theme = bs_theme(brand = T),
+  # TODO: Check necessity
+  # theme = bs_theme(brand = T),
   sidebar = bslib::sidebar(
     bslib::accordion(
+      # Add accordion of design parameters
       design_accordion,
+      # Add accordion of material parameters
       materials_accordion
     )
   ),
   bslib::nav_panel(
     title = "Instructions",
-    bslib::layout_column_wrap(
-      width = NULL,
-      height = NULL,
-      fill = FALSE,
-      style = bslib::css(grid_template_columns = "2fr 1fr"),
-      instruction_card
-    )
+    # Instructions on how to use the app, notes, troubleshooting, acknowledgements of prior work.
+    instruction_card
   ),
   bslib::nav_panel(
     title = "Input Dimensions",
@@ -321,7 +333,7 @@ server <- function(input, output) {
   }
 
   # Fixes issue with gt package where input (where you click on the table)
-  # and output (what is in the table is created with the same call
+  # and output (what is in the table) is created with the same call
   gt_output <- function(outputId) {
     rlang::check_installed("shiny", "to use `gt_output()`.")
 
@@ -347,6 +359,8 @@ server <- function(input, output) {
 
     # Calculate length of chamber roof (half perimeter)
     maxChamberRoofLength <- round(p / 2, 2)
+
+    # Value to scale inner by in order to achieve disired outer dim
     scale_factor <- maxChamberRoofLength / (a * 2)
 
     return(scale_factor)
@@ -361,6 +375,7 @@ server <- function(input, output) {
     y_scaling_factor,
     chamber_orientation
   ) {
+    # Get vertices and scale accordingly
     coords <- st_coordinates(sf_poly)
     coords[, "X"] <- coords[, "X"] * x_scaling_factor
     coords[, "Y"] <- coords[, "Y"] * y_scaling_factor
@@ -382,7 +397,7 @@ server <- function(input, output) {
     # Translate polygons
     coords[, "Y"] <- coords[, "Y"] - y_diff
     coords_seam[, "Y"] <- coords_seam[, "Y"] - y_diff
-
+    # Form to sf objects
     zero_adj_polygon <- st_polygon(list(coords[, c("X", "Y")]))
     adjusted_polygon <- st_sfc(zero_adj_polygon, crs = st_crs(sf_poly)) |>
       st_sf()
@@ -460,12 +475,14 @@ server <- function(input, output) {
     baffle_height
   ) {
     # Define expanded polygons
+    # Seam allowance + baffle height
     poly1 <- st_buffer(
       sf_poly,
       seam_allowance + baffle_height,
       joinStyle = "MITRE",
       mitreLimit = 5
     )
+    # Only seam allowance
     poly2 <- st_buffer(
       sf_poly,
       seam_allowance,
@@ -586,25 +603,26 @@ server <- function(input, output) {
     # Extract coordinates from sf object
     coords <- st_coordinates(sf_vertices)
     if (reference_axis == "Y") {
-      data <- data.frame(other = coords[, 1], reference = coords[, 2])
+      data <- data.frame(nonreference = coords[, 1], reference = coords[, 2])
       data <- data |>
         # Remove furthest baffle lines since this function is served by outer layer fabric
-        slice_max(order_by = other, n = nrow(data) - 2) |>
-        slice_min(order_by = other, n = nrow(data) - 4) |>
-        mutate(other = round(other, 2))
+        slice_max(order_by = nonreference, n = nrow(data) - 2) |>
+        slice_min(order_by = nonreference, n = nrow(data) - 4) |>
+        mutate(nonreference = round(nonreference, 2))
     } else if (reference_axis == "X") {
-      data <- data.frame(reference = coords[, 1], other = coords[, 2]) |>
+      data <- data.frame(reference = coords[, 1], nonreference = coords[, 2]) |>
         # Remove rows where x is approximately 0 (within a tolerance)
         filter(abs(reference) > 1e-10)
       data <- data |>
         # Remove lowest horizontal line. Covered by outer fabric layer.
-        slice_max(order_by = other, n = nrow(data) - 2) |>
-        mutate(other = round(other, 2))
+        slice_max(order_by = nonreference, n = nrow(data) - 2) |>
+        mutate(nonreference = round(nonreference, 2))
     }
 
-    # Group by other and calculate differences in reference for points with same other value
+    # Group by non-reference value and calculate differences in reference axis for
+    # points with same non-reference value
     length_by_baffle <- data |>
-      group_by(other) |>
+      group_by(nonreference) |>
       reframe(
         baffle_length = if (n() > 1) abs(diff(reference)) else NA_real_
       ) |>
@@ -648,7 +666,7 @@ server <- function(input, output) {
       )
 
       extract_lengths <- function(sf_obj, reference_axis) {
-        # Process each polygon
+        # Process each polygon/chamber
         for (i in seq_len(length(sf_obj))) {
           poly <- sf_obj[i, ]
 
@@ -701,8 +719,8 @@ server <- function(input, output) {
           # Add lengths to a df. Remove last row.
           lengths_df <- rbind(
             lengths_df,
+            # TODO: solve vector length discrepency.
             suppressWarnings(cbind(poly_id, reference_vals, lengths))[
-              # cbind(poly_id, reference_vals, lengths)[
               -length(lengths),
             ]
           )
@@ -710,7 +728,7 @@ server <- function(input, output) {
         return(lengths_df)
       }
 
-      # Width of chamber base at each 0.5cm increment
+      # Width of chamber base at each 1cm increment
       inner_chamber_widths <- extract_lengths(sf_obj_inner, reference_axis)
       # Width of chamber upper / Length of curve of the semi-ellipse chamber upper
       outer_chamber_widths <- extract_lengths(sf_obj_outer, reference_axis)
@@ -731,6 +749,7 @@ server <- function(input, output) {
 
       return(attributes)
     }
+
     # DF with polygon ID, inner and outer chamber widths
     attributes <- calculate_chamber_width_at_reference(
       inner_section_poly,
@@ -771,8 +790,8 @@ server <- function(input, output) {
         return(calculated_length - curve_length)
       }
 
-      # Uniroott to minimise objective function
-      # Use a very small positive number for the lower bound to avoid issues at zero
+      # Uniroot to minimise objective function
+      # Issues if lower bound is zero
       # Use tryCatch to handle errors relating to bisection method of rootfinding
       solution <- tryCatch(
         {
@@ -787,7 +806,7 @@ server <- function(input, output) {
         }
       )
 
-      # Semi-minor axis 'b'
+      # Semi-minor axis b
       b <- solution$root
 
       # Calculate area of slice
@@ -837,10 +856,11 @@ server <- function(input, output) {
     return(list(chamber_attributes, attributes))
   }
 
-  # Function to create an sf object of an ellipse/circle
+  # Function to create an sf object of an ellipse (or circle if a = b)
   # perimeter: The target perimeter for the ellipse.
   # ratio: The shape parameter (theta), defined as b/a, where 0 < ratio <= 5.
-  #        A ratio of 1 is a circle, and a ratio close to 0 is a very flat ellipse.
+  # A ratio of 1 is a circle, greater than 1 changes the orientation, and a
+  # ratio close to 0 is a very flat ellipse.
   create_ellipse_sf <- function(perimeter, ratio) {
     # Validate the ratio input
     if (ratio <= 0 || ratio > 5) {
@@ -1096,16 +1116,15 @@ server <- function(input, output) {
     req(values$user_input)
     c(values$user_input$x, -rev(values$user_input$x))
   })
-
   all_selected_points_y <- shiny::reactive({
     req(values$user_input)
     c(values$user_input$y, rev(values$user_input$y))
   })
 
+  # Logical values to denote a quilt being all vertical/horizontal chambers
   full_vertical_chambers <- shiny::reactive({
     input$orientationSplitHeight == 0
   })
-
   full_horizontal_chambers <- shiny::reactive({
     req(values$user_input)
     max(values$user_input$y) == input$orientationSplitHeight
@@ -1114,6 +1133,7 @@ server <- function(input, output) {
   #---------------------------
   # Geometric Data List
   #---------------------------
+  # Reactive dataframe to hold values for output
   data_list <- shiny::reactive({
     req(all_selected_points_x)
     req(all_selected_points_y)
@@ -1125,12 +1145,6 @@ server <- function(input, output) {
       x = all_selected_points_x(),
       y = all_selected_points_y()
     )
-
-    # # Standardise y-axis if bottom edge of shape is not equal to y=0
-    # y_min_diff <- 0 - min(points$y)
-    # if (y_min_diff) {
-    #   points$y <- points$y + y_min_diff
-    # }
 
     # Create polygon from selected points
     # Serves as inner layer w/o seam allowance
@@ -1176,6 +1190,7 @@ server <- function(input, output) {
       ))))
       # Split base polygon into vertical/horizontal chamber segments
       vert_simple <- st_crop(inner, vert_bbox)
+
       # Add seam allowance w/ non-rounded vertices
       inner_vert_simple_seam <- st_buffer(
         vert_simple,
@@ -1184,13 +1199,17 @@ server <- function(input, output) {
         mitreLimit = 5
       )
 
+      # Calculate scale factor
       vert_baffle_scale_factor <- scale_factor("vertical")
+
+      # Apply scaling
       outer_vert_simple <- scale_geometry(
         vert_simple,
         vert_baffle_scale_factor,
         1
       )
 
+      # Add seam allowance
       outer_vert_simple_seam <- st_buffer(
         outer_vert_simple,
         input$seamAllowance,
@@ -1198,6 +1217,7 @@ server <- function(input, output) {
         mitreLimit = 5
       )
 
+      # adjust so that y axis starts at zero
       outer_vert_list <- adjust_y_zero(
         outer_vert_simple,
         outer_vert_simple_seam
@@ -1205,12 +1225,13 @@ server <- function(input, output) {
       outer_vert_simple <- outer_vert_list[[1]]
       outer_vert_simple_seam <- outer_vert_list[[2]]
 
+      # Add area to running total
       outer_layer_area <- outer_layer_area + st_area(outer_vert_simple_seam)
 
       # Adjust y-axis to be in line
       vert_simple <- vert_simple + c(0, input$seamAllowance)
 
-      # Create a regular grid that covers the outer layer segment
+      # Create a regular grid that covers the inner layer segment
       inner_vert_grid <- st_make_grid(
         vert_simple,
         cellsize = c(
@@ -1220,6 +1241,7 @@ server <- function(input, output) {
         square = TRUE,
         offset = c(0, 0)
       )
+      # Create a regular grid that covers the outer layer segment
       outer_vert_grid <- st_make_grid(
         outer_vert_simple,
         cellsize = c(
@@ -1231,15 +1253,18 @@ server <- function(input, output) {
       )
 
       # Split polygon into subpolygons(chambers) by grid
+      # Inner layer
       inner_vert_segmented <- st_intersection(inner_vert_grid, vert_simple)
       inner_vert_segmented <- mirror_vert_chambers(inner_vert_segmented)
 
+      #Outer layer
       outer_vert_segmented <- st_intersection(
         outer_vert_grid,
         outer_vert_simple
       )
       outer_vert_segmented <- mirror_vert_chambers(outer_vert_segmented)
 
+      # Extract intersection points for plotting
       outer_vert_simple_seam_vertices <- extract_polygon_vertices(
         outer_vert_simple_seam
       )
@@ -1252,9 +1277,11 @@ server <- function(input, output) {
         outer_vert_chamber_vertices,
         "Y"
       ))
+
       # Running total of baffle length
       baffle_length <- baffle_length + vert_baffle_length
 
+      # Calculate volume data for each chamber
       vert_chamber_volumes <- calculate_volume_by_chamber(
         inner_vert_segmented,
         outer_vert_segmented,
@@ -1275,6 +1302,7 @@ server <- function(input, output) {
 
       inner_vert_segmented <- st_sf(inner_vert_segmented)
       st_geometry(inner_vert_segmented) <- "inner_segmented"
+      # Add tooltip for hovering
       inner_vert_segmented$tooltip <- paste0(
         "Volume: ",
         round(vert_chamber_volumes$total_volume, 2),
@@ -1297,27 +1325,43 @@ server <- function(input, output) {
           joinStyle = "MITRE",
           mitreLimit = 5
         )
+        # Adjust so the y-axis starts at zero
+        outer_vert_simple_seam <- st_geometry(outer_vert_simple_seam) +
+          c(0, input$baffleHeight)
+        outer_vert_segmented <- st_geometry(outer_vert_segmented) +
+          c(0, input$baffleHeight)
+        # Update vertices
         outer_vert_simple_seam_vertices <- extract_polygon_vertices(
           outer_vert_simple_seam
         )
+        outer_vert_chamber_vertices <- extract_chamber_vertices(
+          outer_vert_segmented
+        )
       } else if (input$baffleWallExtension) {
+        # Invert polygon since we want the short edge to be on the bottom
         outer_vert_simple_inverted <- invert_polygon(outer_vert_simple)
         outer_vert_simple_seam_inverted <- add_baffle_wall_allowance(
           outer_vert_simple_inverted,
           input$seamAllowance,
           input$baffleHeight
         )
+        # Invert back to normal orientation
         outer_vert_simple_seam <- invert_polygon(
           outer_vert_simple_seam_inverted
         )
+        # Update vertices
         outer_vert_simple_seam_vertices <- extract_polygon_vertices(
           outer_vert_simple_seam
         )
+        outer_vert_chamber_vertices <- extract_chamber_vertices(
+          outer_vert_segmented
+        )
       }
-
+      # Join segmented poly data
       inner_segmented <- rbind(inner_segmented, inner_vert_segmented)
     }
 
+    # Same as above unless otherwise commented
     if (!full_vertical_chambers()) {
       hor_bbox <- st_sfc(st_polygon(list(cbind(
         c(
@@ -1341,25 +1385,6 @@ server <- function(input, output) {
       hor_baffle_scale_factor <- scale_factor("horizontal")
       outer_hor_simple <- scale_geometry(hor_simple, 1, hor_baffle_scale_factor)
 
-      # # Add fabric to outer layer to cover outer edge walls if checkbox selected
-      # if (input$baffleWallExtension & full_horizontal_chambers()) {
-      #   outer_hor_extend <- add_baffle_wall_allowance(
-      #     outer_hor_simple,
-      #     "horizontal"
-      #   )
-      #   outer_hor_extend <- add_baffle_wall_allowance(
-      #     outer_hor_extend,
-      #     "vertical"
-      #   )
-      # } else if (input$baffleWallExtension) {
-      #   outer_hor_extend <- add_baffle_wall_allowance(
-      #     outer_hor_simple,
-      #     "horizontal"
-      #   )
-      # } else {
-      #   outer_hor_extend <- outer_hor_simple
-      # }
-
       outer_hor_simple_seam <- st_buffer(
         outer_hor_simple,
         input$seamAllowance,
@@ -1375,7 +1400,6 @@ server <- function(input, output) {
 
       hor_simple <- hor_simple + c(0, input$seamAllowance)
 
-      # Create a regular grid that covers the outer layer segment
       inner_hor_grid <- st_make_grid(
         hor_simple,
         cellsize = c((max(points$x * 2)), input$horizontalChamberWidth),
@@ -1403,17 +1427,9 @@ server <- function(input, output) {
         rotation_matrix +
         c(0, max(st_coordinates(outer_hor_simple_seam)[, "Y"]))
 
-      # # Translate horizontal grid if baffle wall extension is selected
-      # if (input$baffleWallExtension) {
-      #   outer_hor_grid <- st_geometry(outer_hor_grid) + c(0, input$baffleHeight)
-      # }
-
       inner_hor_segmented <- st_intersection(inner_hor_grid, hor_simple)
       outer_hor_segmented <- st_intersection(outer_hor_grid, outer_hor_simple)
 
-      outer_hor_simple_seam_vertices <- extract_polygon_vertices(
-        outer_hor_simple_seam
-      )
       outer_hor_chamber_vertices <- extract_chamber_vertices(
         outer_hor_segmented
       )
@@ -1459,7 +1475,6 @@ server <- function(input, output) {
 
       inner_segmented <- rbind(inner_segmented, inner_hor_segmented)
 
-      # Add fabric to outer layer to cover outer edge walls if checkbox selected
       if (input$baffleWallExtension & full_horizontal_chambers()) {
         outer_hor_simple_seam <- st_buffer(
           outer_hor_simple,
@@ -1467,8 +1482,15 @@ server <- function(input, output) {
           joinStyle = "MITRE",
           mitreLimit = 5
         )
+        outer_hor_simple_seam <- st_geometry(outer_hor_simple_seam) +
+          c(0, input$baffleHeight)
+        outer_hor_segmented <- st_geometry(outer_hor_segmented) +
+          c(0, input$baffleHeight)
         outer_hor_simple_seam_vertices <- extract_polygon_vertices(
           outer_hor_simple_seam
+        )
+        outer_hor_chamber_vertices <- extract_chamber_vertices(
+          outer_hor_segmented
         )
       } else if (input$baffleWallExtension) {
         outer_hor_simple_seam <- add_baffle_wall_allowance(
@@ -1476,16 +1498,25 @@ server <- function(input, output) {
           input$seamAllowance,
           input$baffleHeight
         )
+        outer_hor_simple_seam <- st_geometry(outer_hor_simple_seam) +
+          c(0, input$baffleHeight)
+        outer_hor_segmented <- st_geometry(outer_hor_segmented) +
+          c(0, input$baffleHeight)
         outer_hor_simple_seam_vertices <- extract_polygon_vertices(
           outer_hor_simple_seam
+        )
+        outer_hor_chamber_vertices <- extract_chamber_vertices(
+          outer_hor_segmented
         )
       }
     }
 
+    # Adjust y-axis to start at zero
     inner_list <- adjust_y_zero(inner, inner_seam)
     inner <- inner_list[[1]]
     inner_seam <- inner_list[[2]]
 
+    # Extract vertices
     inner_seam_vertices <- extract_polygon_vertices(inner_seam)
 
     if (input$footboxShape != "None") {
@@ -1496,15 +1527,17 @@ server <- function(input, output) {
           coords[, "Y"] == min(coords[, "Y"])
         ]
         perimeter <- diff(range(bottom_edge_x, na.rm = TRUE))
+        perimeter_minus_seam_allowance <- perimeter - (2 * input$seamAllowance)
 
-        return(perimeter)
+        return(perimeter_minus_seam_allowance)
       }
 
       fb_inner_perimeter <- footbox_perimeter(inner)
+
       if (!full_vertical_chambers()) {
-        fb_outer_perimeter <- footbox_perimeter(outer_hor_simple)
+        fb_outer_perimeter <- footbox_perimeter(outer_hor_simple_seam)
       } else {
-        fb_outer_perimeter <- footbox_perimeter(outer_vert_simple)
+        fb_outer_perimeter <- footbox_perimeter(outer_vert_simple_seam)
       }
 
       if (input$footboxShape == "Ellipse") {
@@ -1523,12 +1556,6 @@ server <- function(input, output) {
         joinStyle = "MITRE",
         mitreLimit = 5
       )
-      # outer_footbox <- st_buffer(
-      #   inner_footbox,
-      #   input$baffleHeight,
-      #   joinStyle = "MITRE",
-      #   mitreLimit = 5
-      # )
       outer_footbox_seam <- st_buffer(
         outer_footbox,
         input$seamAllowance,
@@ -1548,6 +1575,7 @@ server <- function(input, output) {
         c(0, footbox_area, footbox_volume, 0, footbox_volume)
       )
 
+      # Define tooltip in same way as inner layer
       inner_footbox$tooltip <- paste0(
         "Volume: ",
         round(footbox_volume, 2),
