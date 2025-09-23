@@ -107,11 +107,11 @@ design_accordion <- bslib::accordion_panel(
   checkboxInput(
     "baffleWallExtension",
     label = p(
-      "Include Edge Chamber Wall",
-      bslib::tooltip(
-        bsicons::bs_icon("info-circle"),
-        "Use of this feature may cause issues. Please refer to the instruction tab if this occurs."
-      )
+      "Include Edge Chamber Wall"
+      # bslib::tooltip(
+      #   bsicons::bs_icon("info-circle"),
+      #   "Use of this feature may cause issues. Please refer to the instruction tab if this occurs."
+      # )
     ),
     TRUE
   ),
@@ -318,7 +318,22 @@ ui <- bslib::page_navbar(
   ),
   bslib::nav_panel(
     title = "Technical Information",
-    uiOutput("tech_info")
+    tags$head(
+      tags$style(HTML(
+        "
+        #scrollable_div {
+          max-height: 5000px;
+          overflow-y: auto;  /* Enable vertical scrolling */
+          padding: 15px;
+          border: 1px solid #ddd;
+        }
+        p { margin-bottom: 15px; }
+        .note { font-style: italic; color: #555; border-left: 3px solid #007bff; padding-left: 10px; }
+        .highlight { font-weight: bold; color: #007bff; }
+      "
+      ))
+    ),
+    div(id = "scrollable_div", uiOutput("tech_info"))
   )
 )
 #---------------------------
@@ -1082,6 +1097,230 @@ server <- function(input, output) {
     # min_weight <- opt$objective
 
     return(out_l)
+  }
+
+  # Function to generate reactive chamber plots
+  generate_chamber_plot <- function(
+    a,
+    b,
+    baffle_height,
+    title
+  ) {
+    # Create angle sequence
+    theta <- seq(0, pi, length.out = 100)
+
+    # Parametric equations for ellipse
+    x <- a * cos(theta)
+    y <- b * sin(theta)
+
+    # Raise by baffle height
+    y <- y + baffle_height
+
+    # Shift of x-axis so bottom left corner is at origin
+    x <- x + a
+
+    # Create data frame
+    ellipse_curve <- data.frame(x = x, y = y, theta = theta)
+
+    # Add baffle walls
+    ellipse_curve_data <- rbind(
+      c(max(ellipse_curve$x), 0, NA),
+      ellipse_curve,
+      c(min(ellipse_curve$x), 0, NA)
+    )
+
+    p <- ggplot() +
+      coord_fixed(ratio = 1) +
+      theme_minimal() +
+      labs(title = title, x = "Width (cm)", y = "Height (cm)") +
+      theme(plot.title = element_text(hjust = 0.5)) +
+      geom_path(
+        data = ellipse_curve_data,
+        aes(x = x, y = y),
+        color = "black"
+      ) +
+      annotate(
+        "segment",
+        x = 0,
+        xend = a * 2,
+        y = 0,
+        yend = 0,
+        linetype = "dashed",
+        linewidth = 0.8,
+        color = "black"
+      ) +
+      annotate(
+        "text",
+        x = a,
+        y = 0,
+        label = "ILW",
+        size = 4,
+        vjust = 1.5
+      ) +
+      annotate(
+        "text",
+        x = a,
+        y = 0,
+        label = a * 2,
+        size = 4,
+        vjust = 3
+      ) +
+      annotate(
+        "segment",
+        x = a * 2.1,
+        xend = a * 2.1,
+        y = 0,
+        yend = baffle_height + b,
+        linetype = "dashed",
+        linewidth = 0.8,
+        color = "black",
+      ) +
+      annotate(
+        "text",
+        x = a * 2,
+        y = (baffle_height + b) / 2,
+        label = "Hc",
+        size = 4,
+        hjust = -2.5
+      ) +
+      annotate(
+        "text",
+        x = a * 2,
+        y = (baffle_height + b) / 2,
+        label = baffle_height + b,
+        size = 4,
+        hjust = -3.25
+      )
+    if (b == 0) {
+      p <- p +
+        lims(
+          y = c(-0.5, max(ellipse_curve_data$y) + 1),
+          x = c(-0.5, max(ellipse_curve_data$x) + 1)
+        ) +
+        annotate(
+          "text",
+          x = a,
+          y = baffle_height,
+          label = "OLW",
+          size = 4,
+          vjust = -0.5
+        )
+    } else if (b > 0) {
+      # Create OLW annotation
+      x_OLW <- ((a + 0.5) * cos(theta)) + a
+      y_OLW <- ((b + 0.5) * sin(theta)) + baffle_height
+      OLW_curve <- data.frame(x = x_OLW, y = y_OLW)
+
+      p <- p +
+        lims(
+          y = c(-0.5, max(OLW_curve$y) + 0.5),
+          x = c(-0.5, max(OLW_curve$x) + 1)
+        ) +
+        annotate(
+          "segment",
+          x = a,
+          xend = a,
+          y = 0,
+          yend = baffle_height,
+          linetype = "dashed",
+          linewidth = 0.8
+        ) +
+        annotate(
+          "text",
+          x = a,
+          y = baffle_height / 2,
+          label = "Hb",
+          size = 4,
+          hjust = 1.5
+        ) +
+        annotate(
+          "text",
+          x = a,
+          y = baffle_height / 2,
+          label = baffle_height,
+          size = 4,
+          hjust = -1.5
+        ) +
+        geom_line(
+          data = OLW_curve,
+          aes(x = x, y = y),
+          linetype = "dashed",
+          linewidth = 0.8
+        ) +
+        annotate(
+          "text",
+          x = a,
+          y = (baffle_height + b),
+          label = "OLW",
+          size = 4,
+          vjust = -3
+        ) +
+        annotate(
+          "text",
+          x = a,
+          y = (baffle_height + b),
+          label = round(
+            (pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b)))) / 2,
+            2
+          ),
+          size = 4,
+          vjust = -4.5
+        ) +
+        annotate(
+          "segment",
+          x = a,
+          xend = a,
+          y = baffle_height,
+          yend = baffle_height + b,
+          linetype = "dashed",
+          linewidth = 0.8,
+          color = "red"
+        ) +
+        annotate(
+          "text",
+          x = a,
+          y = baffle_height + (b / 2),
+          label = "b",
+          size = 4,
+          hjust = 1.5
+        ) +
+        annotate(
+          "text",
+          x = a,
+          y = baffle_height + (b / 2),
+          label = b,
+          size = 4,
+          hjust = -0.5
+        ) +
+        annotate(
+          "segment",
+          x = a,
+          xend = a * 2,
+          y = baffle_height,
+          yend = baffle_height,
+          linetype = "dashed",
+          linewidth = 0.8,
+          color = "green"
+        ) +
+        annotate(
+          "text",
+          x = a * 1.5,
+          y = baffle_height,
+          label = "a",
+          size = 4,
+          vjust = 1.5
+        ) +
+        annotate(
+          "text",
+          x = a * 1.5,
+          y = baffle_height,
+          label = a,
+          size = 4,
+          vjust = -0.5
+        )
+    }
+
+    return(p)
   }
 
   #---------------------------
@@ -1992,47 +2231,6 @@ server <- function(input, output) {
         make full use of the main purpose of a differential cut, limiting down compression when
          force is applied from inside."
       ),
-      h5("Notes"),
-      tags$ul(
-        tags$li(
-          "For a non-differential cut, volume is calculated by multiplying the area by the
-         baffle height. For a differential cut, the volume is estimated by calculating the area
-          of a semi-ellipse (where a = chamber width / 2 and b = max chamber height - baffle
-          height) at 1cm intervals (integer values of the parallel axis) and summing these areas
-          for an accurate approximation of the chamber's upper segment volume."
-        ),
-        tags$li(
-          "The footbox shape is defined by a single parameter, the ratio between the length
-         of the two sides (rectangular) or the ratio between the semi-minor and semi-major axes
-         (ellipse). In order to rotate the footbox 90 degrees use 1 / current value. This also
-         serves to change the chamber orientation."
-        ),
-        tags$li(
-          "The footbox is currently limited to a non-differential cut. If you need this functionality
-           urgently you can recreate the footbox shape by replacing the Innder Footbox vertices in the
-           Input Dimensions tab."
-        ),
-        tags$li(
-          "In the context of sewn-through baffles, such as those popular in down garments,
-          it cannot be guaranteed that using a differential cut with alleviate all shrinking of
-          the dimension perpendicular to the chamber orientation but it may help to alleviate it.
-          A better potential option would be to assume that the inner layer will curve (and thus
-          shorten) and instead use the outer layer dimensions for both the inner and outer layers."
-        ),
-      ),
-      h6("Troubleshooting"),
-      tags$ul(
-        tags$li(
-          "If the footbox appears incorrectly sized please note that the perimeter of the footbox is
-      equal to the length of the bottom edge of the inner layer, minus the seam allowances, i.e. where
-      x = 0 on the input graph. Ensure that this length is correct when defining the shape."
-        ),
-        tags$li(
-          "If you encounter errors adding the edge chamber walls, you can manually add the length of
-       the baffle height to the outer layer perpendicular to the chamber direction on each external
-        edge. Failing to do this will reduce the capacity of the edge chambers of the finished product."
-        ),
-      ),
       h6("Acknowledgements"),
       p(
         "This app was created to extend on the work of CatSplat's Underquilt Calculator which has been an
@@ -2504,23 +2702,189 @@ server <- function(input, output) {
 
   output$tech_info <- shiny::renderUI({
     tagList(
-      h5("Measurements"),
-      h6("Baffle Dimensions"),
-      # Insert image of baffle slice
-      # img(src = "../down-quilt-designer/assets/CatsplatBaffleCrossSection.png", width = "100%")
-      h6("Footbox Dimensions"),
+      h3("Measurements"),
+      h6("Chamber Dimensions"),
+      # Plot showing specfic chamber parameters
+      # if (!full_horizontal_chambers) {
+      plotOutput("vert_chamber_slice_plot"),
+      # },
+      # if (!full_vertical_chambers) {
+      plotOutput("hor_chamber_slice_plot"), #, height = "500px"),
+      # },
       p(
-        "The perimeters of the layers of the footbox cap/plug is equivalent to the length of the
-         bottom edge of the respective layer of the quilt excluding the seam allowance."
+        "These plots provide a cross-sectional view of the chambers as defined. The notation is as follows:"
+      ),
+      tags$ul(
+        tags$li("ILW = Internal Layer Width"),
+        tags$li(
+          "OLW = Outer Layer Width, the length of the curve of the semi-ellipse if using a differential cut. Otherwise equivalent to the ILW."
+        ),
+        tags$li("Hb = Baffle Height"),
+        tags$li("Hc = Chamber Height. The maximum height of the chamber"),
+        tags$li(
+          "b = The length of the semi-minor axis, the difference between the maximum chamber height and the baffle height."
+        ),
+        tags$li(
+          "a = The length of the semi-major axis, equivalent to half of the ILW."
+        )
+      ),
+      div(
+        class = "note",
+        p(
+          "OLW is calculated using Ramanujan's first approximation for the perimeter of an ellipse and then halved:",
+          withMathJax(
+            "$$ 1/2\\pi * (3 (a+b) - \\sqrt((3 * a + b) * (a +3 * b))) $$"
+          )
+        )
+      ),
+      h4("How Area and Volume Are Calculated"),
+
+      p(
+        "To find the ",
+        span("area of the base rectangle", class = "highlight"),
+        ", we multiply the ",
+        span("internal layer width (ILW)", class = "highlight"),
+        " by the ",
+        span("baffle height (Hb)", class = "highlight"),
+        ".",
+        withMathJax("$$ ILW * Hb $$")
+      ),
+
+      p(
+        "If you're using a ",
+        span("differential cut", class = "highlight"),
+        ", we add the area of a semi-ellipse to this calculation, using the formula: ",
+        withMathJax("$$ 1/2\\pi ab $$")
+      ),
+
+      p(
+        "For chambers that have a consistent ",
+        span("ILW", class = "highlight"),
+        " throughout their length, we calculate the ",
+        span("volume", class = "highlight"),
+        " by simply multiplying the area by the length."
+      ),
+
+      p(
+        "For chambers where the ",
+        span("ILW", class = "highlight"),
+        " changes, we calculate the area at every 1 cm interval along the length. This method maintains the same ratio between the internal and external layer widths (",
+        span("ILW", class = "highlight"),
+        " and ",
+        span("OLW", class = "highlight"),
+        ")."
+      ),
+
+      div(
+        class = "note",
+        p("A few things to note about the calculations:"),
+        tags$ul(
+          tags$li(
+            "Using 1 cm increments can slightly reduce the volume accuracy for chambers with non-parallel walls."
+          ),
+          tags$li(
+            "As the ",
+            span("ILW", class = "highlight"),
+            " decreases, the value of",
+            span("b", class = "highlight"),
+            " (in the semi-ellipse formula) decreases by the same percentage."
+          ),
+          tags$li(
+            "It is necessary to select",
+            span("Include Edge Chamber Wall", class = "highlight"),
+            "for the calculations to be valid for any edge chambers. The additional fabric on the outer layer becomes the outer walls of these chambers in place of baffle material."
+          ),
+        ),
+        p(
+          "However, these factors are unlikely to affect your results in a meaningful way. The slight trade-off in accuracy is insignificant compared to potential manual errors during construction. Additionally, chambers with non-parallel baffle walls are typically edge chambers, which are more likely to be compressed during use meaning that a reduced maximum chamber height has little impact during use."
+        )
+      ),
+      h3("Chamber Optimisation"),
+      p(
+        "Considering only the chamber widths, weights of the baffle and outer material, along with the quantities needed for each section, we can optimize the baffle height (Hb) and maximum chamber height (Hc), excluding seam allowance. Typically, if the baffle material weighs significantly less than the outer material, the baffle height (b) will be small but will increase as the weight difference decreases. Note that if b is too small, some chambers may compress when the quilt is wrapped around a body."
+      ),
+      h3("Sewn-Through Baffles"),
+      p(
+        "In sewn-through baffle designs, commonly used in down garments or warm weather quilts, a differential cut may reduce shrinkage in the dimension perpendicular to the baffle orientation, but it's not guaranteed to eliminate it. A more effective approach could be to account for the inner layer's tendency to curve (and thus shorten) by using the outer layer's dimensions for both the inner and outer layers. The end result would be a chain of ellipses, but be cautious of overstuffing, which can reduce the eccentricity of the ellipse and cause further shrinkage."
+      ),
+      h3("Footbox Design"),
+      tags$ul(
+        tags$li(
+          "The footbox shape is defined by a single parameter, the ratio between the length
+         of the two sides (rectangular) or the ratio between the semi-minor and semi-major axes
+         (ellipse). In order to rotate the footbox 90 degrees use 1 / current value. This also
+         serves to change the chamber orientation."
+        ),
+        tags$li(
+          "Currently oval and rectangular footbox shapes are supported with a non-differential cut. 
+        You may want to use wider baffle walls here to allow for a higher average loft if the rest
+         of the quilt is differentially cut. If you need this functionality
+           urgently you can recreate the footbox shape by entering the Inner Footbox vertices in the
+           Input Dimensions tab and deselecting Include Edge Chamber Wall."
+        ),
+        tags$li(
+          "The perimeters of the layers of the footbox plug is equivalent to the length of the bottom
+         edge of the respective layer of the quilt excluding the seam allowance."
+        ),
       ),
       h6("Footbox Connection"),
-      p(""),
-      tags$ul(
-        tags$li(),
-        tags$li(),
-      )
+      p(
+        "As a disclaimer I have yet to make a quilt with a sewn-footbox so I'm hoping for input from
+         the community regarding best practices for a future version. It seems like the least complex 
+         solution is to sew baffle material around the perimeter of the outer layer and then pleat or 
+         gather periodically when sewing the other side of the baffle material to the inner layer. 
+         The plug could then be sewn to the rest of the quilt. It may be wise to create msaller 
+         chambers in the plug to mitigate down migration."
+      ),
+      h6("Troubleshooting"),
+      p(
+        "If the footbox appears incorrectly sized please note that the perimeter of the footbox is
+      equal to the length of the bottom edge of the inner layer, minus the seam allowances, i.e. where
+      x = 0 on the input graph. Ensure that this length is correct when defining the shape."
+      ),
     )
   })
+
+  output$vert_chamber_slice_plot <- renderPlot(
+    {
+      req(
+        input$baffleHeight,
+        input$verticalChamberHeight,
+        input$horizontalChamberHeight,
+        input$verticalChamberWidth,
+        input$horizontalChamberWidth
+      )
+
+      vert_chamber_plot <- generate_chamber_plot(
+        input$verticalChamberWidth / 2,
+        input$verticalChamberHeight - input$baffleHeight,
+        input$baffleHeight,
+        "Vertical Chamber Visualisation"
+      )
+      vert_chamber_plot
+    } #,
+    # res = 100
+  )
+
+  output$hor_chamber_slice_plot <- renderPlot(
+    {
+      req(
+        input$baffleHeight,
+        input$verticalChamberHeight,
+        input$horizontalChamberHeight,
+        input$verticalChamberWidth,
+        input$horizontalChamberWidth
+      )
+
+      hor_chamber_plot <- generate_chamber_plot(
+        input$horizontalChamberWidth / 2,
+        input$horizontalChamberHeight - input$baffleHeight,
+        input$baffleHeight,
+        "Horizontal Chamber Visualisation"
+      )
+      hor_chamber_plot
+    }
+  )
 
   output$test <- shiny::renderPrint({
     data_list()$test
