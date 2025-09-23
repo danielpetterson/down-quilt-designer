@@ -2604,6 +2604,27 @@ server <- function(input, output) {
   })
 
   output$temp_rating <- renderPlot({
+    validate(
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
+    )
+
     spec_data <- data_list()$specifications
     vert_intercept <- spec_data[["Average Loft Vertical Chambers"]]
     hor_intercept <- spec_data[["Average Loft Horizontal Chambers"]]
@@ -2634,6 +2655,27 @@ server <- function(input, output) {
   })
 
   output$temp_model <- gt::render_gt({
+    validate(
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
+    )
+
     spec_data <- data_list()$specifications
     vert_intercept <- spec_data[["Average Loft Vertical Chambers"]]
     hor_intercept <- spec_data[["Average Loft Horizontal Chambers"]]
@@ -2678,6 +2720,27 @@ server <- function(input, output) {
   })
 
   output$optim_table <- render_gt({
+    validate(
+      need(
+        input$verticalChamberHeight >= input$baffleHeight,
+        "Error: Max Vertical Chamber Height is less than Baffle Height."
+      ),
+      need(
+        input$horizontalChamberHeight >= input$baffleHeight,
+        "Error: Max Horizontal Chamber Height is less than Baffle Height."
+      ),
+      need(
+        (input$horizontalChamberHeight - input$baffleHeight) <=
+          (input$horizontalChamberWidth / 2),
+        "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+      ),
+      need(
+        (input$verticalChamberHeight - input$baffleHeight) <=
+          (input$verticalChamberWidth / 2),
+        "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+      )
+    )
+
     optim_data <- unlist(data_list()$optimisation)
 
     split_data <- strsplit(
@@ -2847,6 +2910,18 @@ server <- function(input, output) {
 
   output$vert_chamber_slice_plot <- renderPlot(
     {
+      validate(
+        need(
+          input$verticalChamberHeight >= input$baffleHeight,
+          "Error: Max Vertical Chamber Height is less than Baffle Height."
+        ),
+        need(
+          (input$verticalChamberHeight - input$baffleHeight) <=
+            (input$verticalChamberWidth / 2),
+          "Error: (Max Vertical Chamber Height - Baffle Height) is greater than half the Vertical Chamber Width."
+        )
+      )
+
       req(
         input$baffleHeight,
         input$verticalChamberHeight,
@@ -2862,12 +2937,24 @@ server <- function(input, output) {
         "Vertical Chamber Visualisation"
       )
       vert_chamber_plot
-    } #,
-    # res = 100
+    },
+    res = 100
   )
 
   output$hor_chamber_slice_plot <- renderPlot(
     {
+      validate(
+        need(
+          input$horizontalChamberHeight >= input$baffleHeight,
+          "Error: Max Horizontal Chamber Height is less than Baffle Height."
+        ),
+        need(
+          (input$horizontalChamberHeight - input$baffleHeight) <=
+            (input$horizontalChamberWidth / 2),
+          "Error: (Max Horizontal Chamber Height - Baffle Height) is greater than half the Horizontal Chamber Width."
+        )
+      )
+
       req(
         input$baffleHeight,
         input$verticalChamberHeight,
@@ -2883,7 +2970,8 @@ server <- function(input, output) {
         "Horizontal Chamber Visualisation"
       )
       hor_chamber_plot
-    }
+    },
+    res = 100
   )
 
   output$test <- shiny::renderPrint({
