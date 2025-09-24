@@ -14,12 +14,15 @@ options(shiny.sanitize.errors = FALSE)
 ## TODO:
 # Add constraint to chamber optimisation to ensure outer circumference is sufficient
 # Add plot of chambers in arc
+# Debounce to avoid unnecessary calculations
 
 # Issues:
 # Create_trapezoid_sf scale
 
+DEVELOPMENT_MODE <- FALSE
 test <- NULL
-
+# Uncomment for troubleshooting
+# DEVELOPMENT_MODE <- TRUE
 
 #---------------------------
 # UI Elements
@@ -129,8 +132,10 @@ materials_accordion <- bslib::accordion_panel(
 
 instruction_card <- bslib::card(
   bslib::card_header("User Guide"),
-  # For validation. Comment out in production.
-  verbatimTextOutput("test"),
+  # For validation.
+  if (DEVELOPMENT_MODE) {
+    verbatimTextOutput("test")
+  },
   uiOutput("intro")
 )
 
@@ -1333,11 +1338,13 @@ server <- function(input, output) {
     y = c(190, 190, seq(175, 10, -15), 0, 0)
   )
 
-  # # For validation
-  # values$user_input <- data.frame(
-  #   x = c(0, 50, 50, 0),
-  #   y = c(100, 100, 0, 0)
-  # )
+  # For validation
+  if (DEVELOPMENT_MODE) {
+    values$user_input <- data.frame(
+      x = c(0, 50, 50, 0),
+      y = c(100, 100, 0, 0)
+    )
+  }
 
   # Reactive values for conditional output of outer layer plots
   output$full_horizontal <- reactive({
