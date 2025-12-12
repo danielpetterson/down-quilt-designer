@@ -1,6 +1,6 @@
-# Underquilt Calculator Extension
+# Down Quilt Designer
 
-This application extends the functionality of [CatSplat's Underquilt Calculator](https://catsplat.github.io/underquilt-calculator/) by enabling users to define non-rectangular shapes for custom underquilt designs. It provides a user-friendly interface to input shape vertices and customize baffle parameters, generating a visual guide for sewing.
+This application extends the functionality of [CatSplat's Underquilt Calculator](https://catsplat.github.io/underquilt-calculator/) by enabling users to define non-rectangular shapes for custom quilt designs. It provides a user-friendly interface to input shape vertices and customise baffle parameters, generating a visual guide for sewing.
 
 ## Features
 - Input custom non-rectangular shapes by specifying vertex coordinates.
