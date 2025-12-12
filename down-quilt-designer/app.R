@@ -2234,14 +2234,14 @@ server <- function(input, output) {
         "This is for the gram weenies amoung us! If you have decided on you ideal target loft,
       chamber widths and material weights then you can use this feature to optimise the baffle
        height and maximum chamber height for the lowest weight finished product. Generally it
-       should favour a slight differential cut but you may want to increase this difference to
-        make full use of the main purpose of a differential cut, limiting down compression when
-         force is applied from inside."
+       is advisable to have at least a slight differential cut as the outer layer is essentially
+       a larger oblong when the quilt is wrapped around the body."
       ),
       h6("Acknowledgements"),
       p(
         "This app was created to extend on the work of CatSplat's Underquilt Calculator which has been an
-      invaluable tool to the community."
+      invaluable tool to the community. This app draws inspiration from extensive discussion within the MYOG
+      and hammock camping communities."
       ),
       tags$p(
         "Please direct any queries or issues to the  ",
